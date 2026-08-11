@@ -1,0 +1,3 @@
+speedhive-tools @ git+https://github.com/cosmoslab58/speedhive-tools
+fastapi
+uvicorn[standard]

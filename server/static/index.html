@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Evergreen AutoX — Speedhive browser</title>
+<style>
+  body { font-family: monospace; margin: 1rem; }
+  .cols { display: flex; gap: 1rem; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  .col h2 { font-size: 1rem; border-bottom: 1px solid #999; }
+  ul { list-style: none; padding: 0; margin: 0; max-height: 70vh; overflow-y: auto; }
+  li { padding: 2px 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  li:hover { background: #ddd; }
+  li.selected { background: #cde; }
+  pre { background: #f4f4f4; padding: 0.5rem; overflow: auto; max-height: 70vh; }
+  #json-col { flex: 2; }
+  .muted { color: #888; }
+</style>
+</head>
+<body>
+  <h1>Speedhive browser</h1>
+  <p>
+    Org ID: <input id="org-input" type="number" value="151294">
+    <button id="load-btn">Load events</button>
+    <span id="status" class="muted"></span>
+  </p>
+  <div class="cols">
+    <div class="col"><h2>Events</h2><ul id="events"></ul></div>
+    <div class="col"><h2>Sessions</h2><ul id="sessions"></ul></div>
+    <div class="col"><h2>Drivers</h2><ul id="drivers"></ul></div>
+    <div class="col" id="json-col"><h2>Raw JSON</h2><pre id="json">(click a driver)</pre></div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const status = msg => { $("status").textContent = msg; };
+
+async function fetchJSON(url) {
+  status("loading " + url + " ...");
+  const res = await fetch(url);
+  if (!res.ok) { status("error " + res.status + " on " + url); throw new Error(url); }
+  status("");
+  return res.json();
+}
+
+function fillList(ul, items, labelFn, onClick) {
+  ul.innerHTML = "";
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = labelFn(item);
+    li.onclick = () => {
+      ul.querySelectorAll("li").forEach(el => el.classList.remove("selected"));
+      li.classList.add("selected");
+      onClick(item);
+    };
+    ul.appendChild(li);
+  }
+  if (!items.length) ul.innerHTML = "<li class='muted'>(none)</li>";
+}
+
+$("load-btn").onclick = async () => {
+  $("sessions").innerHTML = ""; $("drivers").innerHTML = ""; $("json").textContent = "(click a driver)";
+  const events = await fetchJSON(`/api/orgs/${$("org-input").value}/events`);
+  fillList($("events"), events, e => `${e.startDate || e.date || ""} ${e.name || e.id}`, loadSessions);
+};
+
+async function loadSessions(event) {
+  $("drivers").innerHTML = ""; $("json").textContent = "(click a driver)";
+  const sessions = await fetchJSON(`/api/events/${event.id}/sessions`);
+  fillList($("sessions"), sessions, s => `${s.name || s.type || s.id} ${s.startTime || ""}`, loadDrivers);
+}
+
+async function loadDrivers(session) {
+  $("json").textContent = "(click a driver)";
+  const drivers = await fetchJSON(`/api/sessions/${session.id}/drivers`);
+  fillList($("drivers"), drivers,
+    d => `P${d.position} #${d.startNumber ?? "?"} ${d.name}${d.carClass ? " [" + d.carClass + "]" : ""}`,
+    d => loadDriver(session, d));
+}
+
+async function loadDriver(session, driver) {
+  const data = await fetchJSON(`/api/sessions/${session.id}/drivers/${driver.position}`);
+  $("json").textContent = JSON.stringify(data, null, 2);
+}
+</script>
+</body>
+</html>
