@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
 from speedhive.generated.api.session_controller import get_all_lap_times
 from speedhive.wrapper import SpeedhiveClient
 
@@ -55,27 +54,36 @@ def get_drivers(session_id: int):
     for row in client.get_results(session_id):
         if not isinstance(row, dict):
             continue
-        drivers.append({
-            "position": row.get("position"),
-            "name": row.get("name") or row.get("driverName") or "(unknown)",
-            "startNumber": row.get("startNumber"),
-            "carClass": row.get("resultClass"),
-        })
+        drivers.append(
+            {
+                "position": row.get("position"),
+                "name": row.get("name") or row.get("driverName") or "(unknown)",
+                "startNumber": row.get("startNumber"),
+                "carClass": row.get("resultClass"),
+            }
+        )
     return drivers
 
 
 @app.get("/api/sessions/{session_id}/drivers/{position}")
 def get_driver(session_id: int, position: int):
     result_row = next(
-        (row for row in client.get_results(session_id)
-         if isinstance(row, dict) and row.get("position") == position),
+        (
+            row
+            for row in client.get_results(session_id)
+            if isinstance(row, dict) and row.get("position") == position
+        ),
         None,
     )
     if result_row is None:
-        raise HTTPException(status_code=404, detail=f"Position {position} not found in session {session_id}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Position {position} not found in session {session_id}",
+        )
 
     laps = [
-        row for row in _raw_laps(session_id)
+        row
+        for row in _raw_laps(session_id)
         if isinstance(row, dict) and row.get("position") == position
     ]
     return {"result": result_row, "laps": laps}
