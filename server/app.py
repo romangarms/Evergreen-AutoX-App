@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import gglc
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -87,6 +88,25 @@ def get_driver(session_id: int, position: int):
         if isinstance(row, dict) and row.get("position") == position
     ]
     return {"result": result_row, "laps": laps}
+
+
+@app.get("/api/gglc/events")
+def gglc_events(year: int | None = None):
+    return gglc.list_events(year or gglc.today().year)
+
+
+@app.get("/api/gglc/events/{event_date}")
+def gglc_event(event_date: str):
+    try:
+        day = gglc.parse_date(event_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    event = gglc.fetch_event(day)
+    if event is None:
+        raise HTTPException(
+            status_code=404, detail=f"No GGLC results for {day.isoformat()}"
+        )
+    return event
 
 
 @app.get("/")

@@ -1,0 +1,6 @@
+services:
+  autox:
+    build: .
+    ports:
+      - "8321:8321"
+    restart: unless-stopped

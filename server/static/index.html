@@ -24,6 +24,12 @@
     <button id="load-btn">Load events</button>
     <span id="status" class="muted"></span>
   </p>
+  <p>
+    GGLC year: <input id="gglc-year" type="number" value="2026">
+    <button id="gglc-list-btn">List GGLC events</button>
+    date: <input id="gglc-date" placeholder="YYYY-MM-DD">
+    <button id="gglc-load-btn">Load GGLC event</button>
+  </p>
   <div class="cols">
     <div class="col"><h2>Events</h2><ul id="events"></ul></div>
     <div class="col"><h2>Sessions</h2><ul id="sessions"></ul></div>
@@ -81,6 +87,28 @@ async function loadDrivers(session) {
 async function loadDriver(session, driver) {
   const data = await fetchJSON(`/api/sessions/${session.id}/drivers/${driver.position}`);
   $("json").textContent = JSON.stringify(data, null, 2);
+}
+
+$("gglc-list-btn").onclick = async () => {
+  $("sessions").innerHTML = ""; $("drivers").innerHTML = ""; $("json").textContent = "(click a driver)";
+  const events = await fetchJSON(`/api/gglc/events?year=${$("gglc-year").value}`);
+  fillList($("events"), events, e => e.date, e => { $("gglc-date").value = e.date; loadGglcEvent(e.date); });
+};
+
+$("gglc-load-btn").onclick = () => loadGglcEvent($("gglc-date").value);
+
+async function loadGglcEvent(date) {
+  $("drivers").innerHTML = ""; $("json").textContent = "(click a driver)";
+  const event = await fetchJSON(`/api/gglc/events/${date}`);
+  status(`${event.title} (updated ${event.updated})`);
+  fillList($("sessions"), event.classes, c => `${c.name} (${c.drivers.length})`, loadGglcClass);
+}
+
+function loadGglcClass(cls) {
+  $("json").textContent = "(click a driver)";
+  fillList($("drivers"), cls.drivers,
+    d => `#${d.car} ${d.name || "(no name)"} ${d.indexed ?? ""}`,
+    d => { $("json").textContent = JSON.stringify(d, null, 2); });
 }
 </script>
 </body>
