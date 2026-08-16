@@ -51,25 +51,6 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    sectionHeader("ORGANIZATION")
-                    Text("Speedhive organization ID to pull events from. Leave empty for Evergreen Speedway.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.egGrayDark)
-                    TextField("\(AppModel.defaultOrgID) (Evergreen Speedway)", text: $model.orgIDString)
-                        .font(.system(size: 12))
-                        .monospacedDigit()
-                        .keyboardType(.numberPad)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 8)
-                        .background(Color.egCard)
-                        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
-                    Button("LOAD EVENTS") {
-                        Task { await model.loadEvents() }
-                    }
-                    .buttonStyle(EGButtonStyle(kind: .primary))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
                     sectionHeader("SERVER")
                     Text("Base URL of the timing server. Use your Mac's LAN IP when running on a phone.")
                         .font(.system(size: 11))

@@ -113,7 +113,7 @@ def _parse_table(table: list) -> dict | None:
     def col(texts, name):
         try:
             return texts[columns.index(name)]
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return ""
 
     drivers = []
@@ -125,6 +125,13 @@ def _parse_table(table: list) -> dict | None:
             for i, cell in enumerate(row[run_start:])
             if (run := _parse_run(i + 1, cell)) is not None
         ]
+        totals = [run["total"] for run in runs if run["total"] is not None]
+        # GGLC only scores the first 5 runs (the lightgreen cell); we rank by
+        # best of all runs and keep the scored one as "official".
+        official = next(
+            (run["total"] for run in runs if run["best"] and run["total"] is not None),
+            None,
+        )
         drivers.append(
             {
                 "name": col(texts, "Name"),
@@ -133,6 +140,8 @@ def _parse_table(table: list) -> dict | None:
                 "model": col(texts, "Model"),
                 "carClass": col(texts, "Class"),
                 "indexed": float(indexed) if _TIME_RE.fullmatch(indexed) else None,
+                "best": min(totals) if totals else None,
+                "official": official,
                 "runs": runs,
             }
         )

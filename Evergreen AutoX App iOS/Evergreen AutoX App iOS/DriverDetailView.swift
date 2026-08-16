@@ -94,20 +94,42 @@ struct DriverDetailView: View {
 
     private func statsGrid(_ driver: Driver) -> some View {
         let classCount = model.classCount(driver.carClass)
-        let topStats: [(String, String, Color)] = [
-            ("BEST", driver.bestString, .egRed),
-            ("AVERAGE", driver.average.map { LapTime.format($0) } ?? "—", .egInk),
-            ("SPREAD", driver.spread.map { String(format: "%.2fs", $0) } ?? "—", .egInk),
+        var rows: [[(String, String, Color)]] = [
+            [
+                ("BEST", driver.bestString, .egRed),
+                ("AVERAGE", driver.average.map { LapTime.format($0) } ?? "—", .egInk),
+                ("SPREAD", driver.spread.map { String(format: "%.2fs", $0) } ?? "—", .egInk),
+            ],
+            [
+                ("IN CLASS", driver.positionInClass.map { "P\($0) / \(classCount)" } ?? "—", .egInk),
+                ("OVERALL", "P\(driver.position) / \(model.drivers.count)", .egInk),
+                ("RUNS", "\(driver.runs.count)", .egInk),
+            ],
         ]
-        let bottomStats: [(String, String, Color)] = [
-            ("IN CLASS", driver.positionInClass.map { "P\($0) / \(classCount)" } ?? "—", .egInk),
-            ("OVERALL", "P\(driver.position) / \(model.drivers.count)", .egInk),
-            ("RUNS", "\(driver.runs.count)", .egInk),
-        ]
-        return VStack(spacing: 0) {
-            statRow(topStats)
-            Color.egDivider.frame(height: 2)
-            statRow(bottomStats)
+        if let official = driver.officialBest, let number = driver.officialRunNumber {
+            rows.append([("OFFICIAL BEST (R\(number), GGLC SCORED)", LapTime.format(official), .egInk)])
+        }
+        return EGStatsGrid(rows: rows)
+    }
+
+    private func runsTable(_ driver: Driver) -> some View {
+        DriverRunsTable(driver: driver, runDetail: { run in
+            run.number == driver.officialRunNumber ? "OFFICIAL BEST" : nil
+        })
+    }
+}
+
+struct EGStatsGrid: View {
+    let rows: [[(String, String, Color)]]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, stats in
+                if index > 0 {
+                    Color.egDivider.frame(height: 2)
+                }
+                statRow(stats)
+            }
         }
         .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 2))
     }
@@ -134,8 +156,13 @@ struct DriverDetailView: View {
         }
         .fixedSize(horizontal: false, vertical: true)
     }
+}
 
-    private func runsTable(_ driver: Driver) -> some View {
+struct DriverRunsTable: View {
+    let driver: Driver
+    var runDetail: ((Run) -> String?)?
+
+    var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 EGColumnLabel(text: "RUN").frame(width: 44, alignment: .leading)
@@ -155,25 +182,33 @@ struct DriverDetailView: View {
 
             ForEach(driver.runs) { run in
                 let isBest = run.seconds == driver.best
-                HStack(spacing: 0) {
-                    Text("R\(run.number)")
-                        .font(.system(size: 12, weight: .heavy))
-                        .frame(width: 44, alignment: .leading)
-                    Text(run.timeString)
-                        .font(.system(size: 13, weight: isBest ? .heavy : .regular))
-                        .monospacedDigit()
-                        .foregroundStyle(isBest ? Color.egRed : Color.egInk)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(run.speed.map { String(format: "%.1f", $0) } ?? "—")
-                        .font(.system(size: 12))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.egGrayDark)
-                        .frame(width: 52, alignment: .trailing)
-                    Text(deltaString(run, driver: driver))
-                        .font(.system(size: 12, weight: isBest ? .heavy : .regular))
-                        .monospacedDigit()
-                        .foregroundStyle(isBest ? Color.egRed : Color.egGray)
-                        .frame(width: 66, alignment: .trailing)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 0) {
+                        Text("R\(run.number)")
+                            .font(.system(size: 12, weight: .heavy))
+                            .frame(width: 44, alignment: .leading)
+                        Text(run.timeString)
+                            .font(.system(size: 13, weight: isBest ? .heavy : .regular))
+                            .monospacedDigit()
+                            .foregroundStyle(isBest ? Color.egRed : Color.egInk)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(run.speed.map { String(format: "%.1f", $0) } ?? "—")
+                            .font(.system(size: 12))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.egGrayDark)
+                            .frame(width: 52, alignment: .trailing)
+                        Text(deltaString(run))
+                            .font(.system(size: 12, weight: isBest ? .heavy : .regular))
+                            .monospacedDigit()
+                            .foregroundStyle(isBest ? Color.egRed : Color.egGray)
+                            .frame(width: 66, alignment: .trailing)
+                    }
+                    if let detail = runDetail?(run) {
+                        Text(detail)
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Color.egGray)
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.vertical, 8)
                 .padding(.horizontal, isBest ? 6 : 0)
@@ -186,7 +221,7 @@ struct DriverDetailView: View {
         }
     }
 
-    private func deltaString(_ run: Run, driver: Driver) -> String {
+    private func deltaString(_ run: Run) -> String {
         guard let best = driver.best else { return "" }
         if run.seconds == best { return "BEST" }
         return "+" + String(format: "%.3f", run.seconds - best)

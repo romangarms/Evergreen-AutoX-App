@@ -29,6 +29,8 @@ final class AppModel {
         case driver(Int)
         case compare(Int, Int)
         case sessions(Int)
+        case leaderboard(Int)
+        case leaderboardDriver(Int, Int)
     }
 
     static let defaultOrgID = 151294
@@ -44,6 +46,16 @@ final class AppModel {
         return "\(digits.prefix(4))-\(digits.dropFirst(4).prefix(2))-\(digits.suffix(2))"
     }
 
+    // Leaderboard courses share the negative ID space with GGLC's -yyyymmdd,
+    // so they're offset past any representable date.
+    static func leaderboardEventID(courseID: Int) -> Int {
+        -(1_000_000_000 + courseID)
+    }
+
+    static func leaderboardCourseID(eventID: Int) -> Int {
+        -eventID - 1_000_000_000
+    }
+
     private let defaults = UserDefaults.standard
 
     var tab: Tab = .live
@@ -53,8 +65,12 @@ final class AppModel {
     var liveScrollOffset: CGFloat = 0
     var eventSearch = ""
     var eventMonthFilter: String?
+    var eventSourceFilter: EventSource?
     var orgName: String?
     var events: [SHEvent] = []
+    var leaderboardCourses: [LBCourse] = []
+    var leaderboardDetail: LBCourseDetail?
+    var leaderboardError: String?
     var sessions: [SHSession] = []
     var viewedSessions: [SHSession] = []
     var drivers: [Driver] = []
@@ -75,14 +91,48 @@ final class AppModel {
     var orgIDString: String {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
     }
+    private var pinsByEvent: [String: [String]] {
+        didSet { defaults.set(pinsByEvent, forKey: "pinsByEvent") }
+    }
+    private var nicknamesByEvent: [String: [String: String]] {
+        didSet { defaults.set(nicknamesByEvent, forKey: "nicknamesByEvent") }
+    }
+    private var meNumberByEvent: [String: String] {
+        didSet { defaults.set(meNumberByEvent, forKey: "meNumberByEvent") }
+    }
+
+    // Car numbers repeat across events, so pins/nicknames/ME are scoped to the
+    // selected event rather than stored globally.
+    private var eventKey: String? { selectedEventID.map(String.init) }
+
     var pins: Set<String> {
-        didSet { defaults.set(Array(pins), forKey: "pins") }
+        get { eventKey.flatMap { pinsByEvent[$0] }.map(Set.init) ?? [] }
+        set {
+            guard let key = eventKey else { return }
+            if newValue.isEmpty {
+                pinsByEvent.removeValue(forKey: key)
+            } else {
+                pinsByEvent[key] = newValue.sorted()
+            }
+        }
     }
     var nicknames: [String: String] {
-        didSet { defaults.set(nicknames, forKey: "nicknames") }
+        get { eventKey.flatMap { nicknamesByEvent[$0] } ?? [:] }
+        set {
+            guard let key = eventKey else { return }
+            if newValue.isEmpty {
+                nicknamesByEvent.removeValue(forKey: key)
+            } else {
+                nicknamesByEvent[key] = newValue
+            }
+        }
     }
     var meNumber: String? {
-        didSet { defaults.set(meNumber, forKey: "meNumber") }
+        get { eventKey.flatMap { meNumberByEvent[$0] } }
+        set {
+            guard let key = eventKey else { return }
+            meNumberByEvent[key] = newValue
+        }
     }
     private var sessionChoice: [String: Int] {
         didSet { defaults.set(sessionChoice, forKey: "sessionChoice") }
@@ -94,11 +144,28 @@ final class AppModel {
     init() {
         baseURLString = defaults.string(forKey: "serverBaseURL") ?? "http://127.0.0.1:8321"
         orgIDString = defaults.string(forKey: "orgID") ?? ""
-        pins = Set(defaults.stringArray(forKey: "pins") ?? [])
-        nicknames = (defaults.dictionary(forKey: "nicknames") as? [String: String]) ?? [:]
-        meNumber = defaults.string(forKey: "meNumber")
+        pinsByEvent = (defaults.dictionary(forKey: "pinsByEvent") as? [String: [String]]) ?? [:]
+        nicknamesByEvent = (defaults.dictionary(forKey: "nicknamesByEvent") as? [String: [String: String]]) ?? [:]
+        meNumberByEvent = (defaults.dictionary(forKey: "meNumberByEvent") as? [String: String]) ?? [:]
         sessionChoice = (defaults.dictionary(forKey: "sessionChoice") as? [String: Int]) ?? [:]
         recentEventIDs = (defaults.array(forKey: "recentEventIDs") as? [Int]) ?? []
+        migrateGlobalPersonalization()
+    }
+
+    private func migrateGlobalPersonalization() {
+        let legacyPins = defaults.stringArray(forKey: "pins")
+        let legacyNicknames = defaults.dictionary(forKey: "nicknames") as? [String: String]
+        let legacyMe = defaults.string(forKey: "meNumber")
+        guard legacyPins != nil || legacyNicknames != nil || legacyMe != nil else { return }
+        if let eventID = defaults.object(forKey: "selectedEventID") as? Int {
+            let key = String(eventID)
+            if let legacyPins, !legacyPins.isEmpty { pinsByEvent[key] = legacyPins }
+            if let legacyNicknames, !legacyNicknames.isEmpty { nicknamesByEvent[key] = legacyNicknames }
+            if let legacyMe { meNumberByEvent[key] = legacyMe }
+        }
+        defaults.removeObject(forKey: "pins")
+        defaults.removeObject(forKey: "nicknames")
+        defaults.removeObject(forKey: "meNumber")
     }
 
     private var client: APIClient {
@@ -107,6 +174,33 @@ final class AppModel {
 
     var orgID: Int {
         Int(orgIDString.trimmingCharacters(in: .whitespaces)) ?? Self.defaultOrgID
+    }
+
+    var leaderboardDrivers: [Driver] {
+        guard let detail = leaderboardDetail else { return [] }
+        return Dictionary(grouping: detail.runs, by: \.driver)
+            .map { name, runs in
+                (name: name, runs: runs, best: runs.map(\.adjustedSeconds).min() ?? .infinity)
+            }
+            .sorted { ($0.best, $0.name) < ($1.best, $1.name) }
+            .enumerated()
+            .map { index, entry in
+                Driver(rank: index + 1, name: entry.name, leaderboardRuns: entry.runs)
+            }
+    }
+
+    func leaderboardDriver(at position: Int) -> Driver? {
+        leaderboardDrivers.first { $0.position == position }
+    }
+
+    var eventsHeaderTitle: String {
+        let source = switch eventSourceFilter {
+        case .speedhive: orgName ?? EventSource.speedhive.label
+        case .some(let filter): filter.label
+        case nil: "All Sources"
+        }
+        guard let month = eventMonthFilter else { return source }
+        return "\(source) · \(Self.monthLabel(month))"
     }
 
     var selectedEvent: SHEvent? { events.first { $0.id == selectedEventID } }
@@ -200,6 +294,8 @@ final class AppModel {
         self.screen = screen
         if case .sessions(let eventID) = screen {
             loadViewedSessions(eventID: eventID, autoPick: autoPickSingleSession)
+        } else if case .leaderboard(let courseID) = screen {
+            loadLeaderboard(courseID: courseID)
         }
     }
 
@@ -235,9 +331,9 @@ final class AppModel {
     }
 
     func resetPersonalization() {
-        pins = []
-        nicknames = [:]
-        meNumber = nil
+        pinsByEvent = [:]
+        nicknamesByEvent = [:]
+        meNumberByEvent = [:]
         compareSelection = []
     }
 
@@ -252,13 +348,18 @@ final class AppModel {
         do {
             async let orgTask = client.org(orgID: orgID)
             async let gglcTask = loadGGLCEvents()
+            async let leaderboardTask = loadLeaderboardEvents()
             let speedhiveEvents = try await client.events(orgID: orgID)
             let gglcEvents = await gglcTask
+            let leaderboardEvents = await leaderboardTask
             events = (speedhiveEvents + gglcEvents)
                 .sorted { ($0.startDate ?? "") > ($1.startDate ?? "") }
+                + leaderboardEvents
             orgName = (try? await orgTask)?.name
             let saved = defaults.object(forKey: "selectedEventID") as? Int
-            let eventID = events.first { $0.id == saved }?.id ?? events.first?.id
+            // Leaderboards have no sessions, so they can't be the Live event.
+            let eventID = events.first { $0.id == saved }?.id
+                ?? events.first { $0.source != .trackaddict }?.id
             if let eventID {
                 await selectEvent(eventID)
             } else {
@@ -282,8 +383,42 @@ final class AppModel {
                     id: $0,
                     name: "GGLC Autocross",
                     startDate: stub.date,
-                    location: SHLocation(name: "Golden Gate Lotus Club", lengthLabel: nil)
+                    location: SHLocation(name: "Golden Gate Lotus Club", lengthLabel: nil),
+                    source: .gglc
                 )
+            }
+        }
+    }
+
+    // Like GGLC, leaderboard failures only cost the extra rows.
+    private func loadLeaderboardEvents() async -> [SHEvent] {
+        let courses = (try? await client.leaderboardCourses()) ?? []
+        leaderboardCourses = courses
+        return courses.map { course in
+            SHEvent(
+                id: Self.leaderboardEventID(courseID: course.id),
+                name: course.name,
+                startDate: nil,
+                location: SHLocation(
+                    name: "TrackAddict Leaderboard",
+                    lengthLabel: course.distanceMiles.map { String(format: "%.2f mi", $0) }
+                ),
+                source: .trackaddict
+            )
+        }
+    }
+
+    private func loadLeaderboard(courseID: Int) {
+        leaderboardError = nil
+        leaderboardDetail = nil
+        Task {
+            do {
+                let detail = try await client.leaderboardCourse(id: courseID)
+                guard case .some(.leaderboard(courseID)) = screen else { return }
+                leaderboardDetail = detail
+            } catch {
+                guard case .some(.leaderboard(courseID)) = screen else { return }
+                leaderboardError = error.localizedDescription
             }
         }
     }

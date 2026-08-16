@@ -52,6 +52,14 @@ struct APIClient {
         try await get("api/gglc/events/\(date)", session: Self.gglcSession)
     }
 
+    func leaderboardCourses() async throws -> [LBCourse] {
+        try await get("api/leaderboard/courses")
+    }
+
+    func leaderboardCourse(id: Int) async throws -> LBCourseDetail {
+        try await get("api/leaderboard/courses/\(id)")
+    }
+
     private func get<T: Decodable>(_ path: String, session: URLSession = APIClient.session) async throws -> T {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw APIError(message: "Bad URL: \(baseURL)\(path)")

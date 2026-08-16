@@ -8,7 +8,14 @@ struct EventsView: View {
         VStack(spacing: 0) {
             searchField
             if let month = model.eventMonthFilter {
-                monthFilterBanner(month)
+                filterBanner("SHOWING \(AppModel.monthLabel(month).uppercased()) ONLY") {
+                    model.eventMonthFilter = nil
+                }
+            }
+            if let source = model.eventSourceFilter {
+                filterBanner("SHOWING \(source.label.uppercased()) ONLY") {
+                    model.eventSourceFilter = nil
+                }
             }
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -37,6 +44,9 @@ struct EventsView: View {
             if let month = model.eventMonthFilter, AppModel.eventMonth(event) != month {
                 return false
             }
+            if let source = model.eventSourceFilter, event.source != source {
+                return false
+            }
             guard !query.isEmpty else { return true }
             return event.name.localizedCaseInsensitiveContains(query)
                 || (event.location?.name?.localizedCaseInsensitiveContains(query) ?? false)
@@ -52,19 +62,20 @@ struct EventsView: View {
         if let month = model.eventMonthFilter {
             return "No events in \(AppModel.monthLabel(month))."
         }
+        if let source = model.eventSourceFilter {
+            return "No \(source.label) events."
+        }
         return "No events."
     }
 
-    private func monthFilterBanner(_ month: String) -> some View {
+    private func filterBanner(_ text: String, clear: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
-            Text("SHOWING \(AppModel.monthLabel(month).uppercased()) ONLY")
+            Text(text)
                 .font(.system(size: 9.5, weight: .heavy))
                 .kerning(0.9)
                 .foregroundStyle(Color.egGrayDark)
             Spacer()
-            Button {
-                model.eventMonthFilter = nil
-            } label: {
+            Button(action: clear) {
                 Text("CLEAR")
                     .font(.system(size: 9.5, weight: .heavy))
                     .kerning(0.9)
@@ -108,7 +119,11 @@ struct EventsView: View {
 
     private func eventRow(_ event: SHEvent) -> some View {
         Button {
-            model.open(screen: .sessions(event.id))
+            if event.source == .trackaddict {
+                model.open(screen: .leaderboard(AppModel.leaderboardCourseID(eventID: event.id)))
+            } else {
+                model.open(screen: .sessions(event.id))
+            }
         } label: {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
@@ -120,7 +135,7 @@ struct EventsView: View {
                         .foregroundStyle(Color.egGray)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if event.id == model.events.first?.id {
+                if event.source != .trackaddict, event.id == model.events.first?.id {
                     EGTag(text: "LATEST", size: 9)
                         .padding(.trailing, 8)
                 }

@@ -37,13 +37,20 @@ struct RootView: View {
             return ("VS", "Head-to-head", sessionName, false)
         case .sessions:
             return ("EVENT", "Pick a session", nil, false)
+        case .leaderboard(let courseID):
+            let course = model.leaderboardCourses.first { $0.id == courseID }
+            return ("LEADERBOARD", course?.name ?? "TrackAddict", nil, false)
+        case .leaderboardDriver(let courseID, let position):
+            let course = model.leaderboardCourses.first { $0.id == courseID }
+            let driver = model.leaderboardDriver(at: position)
+            return ("DRIVER", driver?.name ?? "Driver", course?.name, false)
         case nil:
             switch model.tab {
             case .live:
                 // GGLC events all share one name, so without the date the header
                 // can't show which one is loaded.
                 var parts = [sessionName].compactMap(\.self)
-                if let event = model.selectedEvent, event.id < 0,
+                if let event = model.selectedEvent, event.source == .gglc,
                    let date = AppModel.eventDate(event.startDate) {
                     parts.append(date)
                 }
@@ -52,7 +59,7 @@ struct RootView: View {
             case .friends:
                 return ("FRIENDS", "Your people", sessionName, false)
             case .events:
-                return ("EVENTS", model.orgName ?? "Events", nil, false)
+                return ("EVENTS", model.eventsHeaderTitle, nil, false)
             case .settings:
                 return ("SETUP", "Settings", nil, false)
             }
@@ -125,10 +132,17 @@ struct RootView: View {
                 }
             }
             .pickerStyle(.menu)
+            Picker("Filter by Source", selection: $model.eventSourceFilter) {
+                Text("All Sources").tag(EventSource?.none)
+                ForEach(EventSource.allCases, id: \.self) { source in
+                    Text(source.label).tag(EventSource?.some(source))
+                }
+            }
+            .pickerStyle(.menu)
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.system(size: 23, weight: .semibold))
-                .foregroundStyle(model.eventMonthFilter == nil ? Color.egInk : Color.egRed)
+                .foregroundStyle(model.eventMonthFilter == nil && model.eventSourceFilter == nil ? Color.egInk : Color.egRed)
                 .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
         }
@@ -144,6 +158,10 @@ struct RootView: View {
             CompareView(positionA: a, positionB: b)
         case .sessions(let eventID):
             SessionPickerView(eventID: eventID)
+        case .leaderboard(let courseID):
+            LeaderboardView(courseID: courseID)
+        case .leaderboardDriver(let courseID, let position):
+            LeaderboardDriverView(courseID: courseID, position: position)
         case nil:
             switch model.tab {
             case .live: LiveView(initialOffset: model.liveScrollOffset)

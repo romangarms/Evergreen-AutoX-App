@@ -5,11 +5,30 @@ struct SHOrg: Codable {
     let name: String?
 }
 
+enum EventSource: String, CaseIterable, Hashable {
+    case speedhive, gglc, trackaddict
+
+    var label: String {
+        switch self {
+        case .speedhive: "Speedhive"
+        case .gglc: "GGLC"
+        case .trackaddict: "TrackAddict"
+        }
+    }
+}
+
 struct SHEvent: Codable, Identifiable, Hashable {
     let id: Int
     let name: String
     let startDate: String?
     let location: SHLocation?
+    var source: EventSource = .speedhive
+
+    // The server sends no source field; decoded events are always Speedhive,
+    // and the other sources are constructed locally.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, startDate, location
+    }
 }
 
 struct SHLocation: Codable, Hashable {
@@ -88,6 +107,48 @@ struct GGLCRun: Codable {
     let best: Bool
 }
 
+struct LBCourse: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let distanceMiles: Double?
+    let legacyDistanceMiles: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case distanceMiles = "distance_miles"
+        case legacyDistanceMiles = "legacy_distance_miles"
+    }
+}
+
+struct LBCourseDetail: Codable {
+    let course: LBCourse
+    let runs: [LBRun]
+}
+
+struct LBRun: Codable, Identifiable {
+    let id: Int
+    let driver: String
+    let vehicle: String?
+    let hp: Int?
+    let time: String
+    let adjustedSeconds: Double
+    let adjustedTime: String
+    let avgSpeedMph: Double?
+    let topSpeedMph: Double?
+    let runDate: String?
+    let conditions: String?
+    let legacy: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, driver, vehicle, hp, time, conditions, legacy
+        case adjustedSeconds = "adjusted_seconds"
+        case adjustedTime = "adjusted_time"
+        case avgSpeedMph = "avg_speed_mph"
+        case topSpeedMph = "top_speed_mph"
+        case runDate = "run_date"
+    }
+}
+
 enum LapTime {
     static func seconds(from string: String?) -> Double? {
         guard let string, !string.isEmpty else { return nil }
@@ -128,12 +189,18 @@ struct Driver: Identifiable {
     let carClass: String?
     let positionInClass: Int?
     let runs: [Run]
+    // GGLC scores only the first 5 runs; we rank by best of all runs instead.
+    let officialRunNumber: Int?
     private let bestTimeString: String?
 
     var id: Int { position }
 
     var best: Double? {
         runs.map(\.seconds).min() ?? LapTime.seconds(from: bestTimeString)
+    }
+
+    var officialBest: Double? {
+        runs.first { $0.number == officialRunNumber }?.seconds
     }
 
     var bestString: String { best.map(LapTime.format) ?? "—" }
@@ -160,11 +227,42 @@ struct Driver: Identifiable {
         startNumber = gglc.car.isEmpty ? "P\(position)" : gglc.car
         self.carClass = carClass
         self.positionInClass = positionInClass
+        officialRunNumber = gglc.runs.first { $0.best && $0.total != nil }?.run
         bestTimeString = nil
         runs = gglc.runs.compactMap { run in
             guard let total = run.total else { return nil }
             return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil)
         }
+    }
+
+    // Leaderboard drivers have no car number, so the name doubles as the
+    // startNumber — pins and nicknames are keyed by car number and won't match.
+    init(rank: Int, name: String, leaderboardRuns: [LBRun]) {
+        position = rank
+        self.name = name
+        startNumber = name
+        var vehicles: [String] = []
+        for run in leaderboardRuns {
+            if let vehicle = run.vehicle, !vehicles.contains(vehicle) {
+                vehicles.append(vehicle)
+            }
+        }
+        carClass = vehicles.isEmpty ? nil : vehicles.joined(separator: ", ")
+        positionInClass = nil
+        officialRunNumber = nil
+        bestTimeString = nil
+        runs = leaderboardRuns
+            .sorted { ($0.runDate ?? "") < ($1.runDate ?? "") }
+            .enumerated()
+            .map { index, run in
+                Run(
+                    number: index + 1,
+                    lapNumber: run.id,
+                    seconds: run.adjustedSeconds,
+                    speed: run.avgSpeedMph,
+                    timeOfDay: nil
+                )
+            }
     }
 
     init(result: SHResultRow, laps: [SHLap]) {
@@ -173,6 +271,7 @@ struct Driver: Identifiable {
         startNumber = result.startNumber ?? "P\(result.position ?? 0)"
         carClass = result.resultClass
         positionInClass = result.positionInClass
+        officialRunNumber = nil
         bestTimeString = result.bestTime
 
         let fastest = laps

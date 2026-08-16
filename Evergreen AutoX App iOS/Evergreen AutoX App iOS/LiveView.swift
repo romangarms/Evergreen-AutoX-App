@@ -15,7 +15,7 @@ struct LiveView: View {
         } else {
             ScrollView {
                 VStack(spacing: 0) {
-                    columnHeader
+                    ResultsColumnHeader()
                     ForEach(model.drivers) { driver in
                         ResultRowView(driver: driver)
                     }
@@ -31,13 +31,23 @@ struct LiveView: View {
         }
     }
 
-    private var columnHeader: some View {
+}
+
+struct ResultsColumnHeader: View {
+    var showsNumber = true
+    var showsPin = true
+
+    var body: some View {
         HStack(spacing: 8) {
             EGColumnLabel(text: "POS").frame(width: 34, alignment: .leading)
-            EGColumnLabel(text: "NO.").frame(width: 40, alignment: .leading)
+            if showsNumber {
+                EGColumnLabel(text: "NO.").frame(width: 40, alignment: .leading)
+            }
             EGColumnLabel(text: "DRIVER").frame(maxWidth: .infinity, alignment: .leading)
             EGColumnLabel(text: "BEST").frame(width: 70, alignment: .trailing)
-            Color.clear.frame(width: 30, height: 1)
+            if showsPin {
+                Color.clear.frame(width: 30, height: 1)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -82,6 +92,9 @@ struct StatusView: View {
 struct ResultRowView: View {
     @Environment(AppModel.self) private var model
     let driver: Driver
+    var showsNumber = true
+    var showsPin = true
+    var onTap: (() -> Void)?
 
     var body: some View {
         let pinned = model.pins.contains(driver.startNumber)
@@ -89,19 +102,25 @@ struct ResultRowView: View {
         let nickname = model.nicknames[driver.startNumber]
 
         Button {
-            model.open(screen: .driver(driver.position))
+            if let onTap {
+                onTap()
+            } else {
+                model.open(screen: .driver(driver.position))
+            }
         } label: {
             HStack(spacing: 8) {
                 Text("P\(driver.position)")
                     .font(.system(size: 14, weight: .heavy))
                     .frame(width: 34, alignment: .leading)
-                Text("#\(driver.startNumber)")
-                    .font(.system(size: 12))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.egGray)
-                    .frame(width: 40, alignment: .leading)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                if showsNumber {
+                    Text("#\(driver.startNumber)")
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.egGray)
+                        .frame(width: 40, alignment: .leading)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(model.displayName(driver))
@@ -126,16 +145,18 @@ struct ResultRowView: View {
                         .foregroundStyle(Color.egGray)
                 }
                 .frame(width: 70, alignment: .trailing)
-                Button {
-                    model.togglePin(driver.startNumber)
-                } label: {
-                    Image(systemName: pinned ? "star.fill" : "star")
-                        .font(.system(size: 14))
-                        .foregroundStyle(pinned ? Color.egRed : Color.egGrayLight)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle().inset(by: -11))
+                if showsPin {
+                    Button {
+                        model.togglePin(driver.startNumber)
+                    } label: {
+                        Image(systemName: pinned ? "star.fill" : "star")
+                            .font(.system(size: 14))
+                            .foregroundStyle(pinned ? Color.egRed : Color.egGrayLight)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle().inset(by: -11))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .foregroundStyle(Color.egInk)
             .padding(.horizontal, 16)
