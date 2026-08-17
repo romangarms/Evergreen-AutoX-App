@@ -49,7 +49,7 @@ def parse_log(text: str) -> dict:
             speed = float(record["Speed (MPH)"])
             lat = float(record["Latitude"])
             lon = float(record["Longitude"])
-        except KeyError, ValueError:
+        except (KeyError, ValueError):
             continue
         stats = laps.setdefault(
             lap, {"top_speed_mph": 0.0, "distance_miles": 0.0, "last_point": None}

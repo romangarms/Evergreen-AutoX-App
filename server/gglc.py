@@ -113,7 +113,7 @@ def _parse_table(table: list) -> dict | None:
     def col(texts, name):
         try:
             return texts[columns.index(name)]
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             return ""
 
     drivers = []
