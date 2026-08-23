@@ -52,19 +52,24 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     sectionHeader("SERVER")
-                    Text("Base URL of the timing server. Use your Mac's LAN IP when running on a phone.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.egGrayDark)
-                    TextField("http://192.168.1.10:8321", text: $model.baseURLString)
+                    Text("Official server")
                         .font(.system(size: 12))
-                        .monospaced()
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 8)
-                        .background(Color.egCard)
-                        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                        .foregroundStyle(model.devMode ? Color.egGray : Color.egInk)
+                    if model.devMode {
+                        Text("Custom server base URL. Use your Mac's LAN IP when running on a phone; leave empty for the default server.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.egGrayDark)
+                        TextField("http://192.168.1.10:8321", text: $model.customBaseURLString)
+                            .font(.system(size: 12))
+                            .monospaced()
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 8)
+                            .background(Color.egCard)
+                            .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                    }
                     Button("RECONNECT") {
                         Task { await model.loadEvents() }
                     }
@@ -75,6 +80,26 @@ struct SettingsView: View {
                     model.resetPersonalization()
                 }
                 .buttonStyle(EGButtonStyle())
+
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("DEV")
+                    Button {
+                        model.devMode.toggle()
+                        Task { await model.loadEvents() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Rectangle()
+                                .strokeBorder(model.devMode ? Color.egRed : Color.egDivider, lineWidth: 2)
+                                .background(model.devMode ? Color.egRed : Color.clear)
+                                .frame(width: 14, height: 14)
+                            Text("DEV MODE")
+                                .font(.system(size: 11, weight: .heavy))
+                                .kerning(1.1)
+                        }
+                        .foregroundStyle(Color.egInk)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)

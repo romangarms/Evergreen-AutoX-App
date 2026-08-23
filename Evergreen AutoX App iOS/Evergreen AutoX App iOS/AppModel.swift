@@ -85,8 +85,17 @@ final class AppModel {
     var isRenaming = false
     var renameText = ""
 
+    static let defaultBaseURL = "http://mini.romangarms.com:8321"
+
+    var devMode: Bool {
+        didSet { defaults.set(devMode, forKey: "devMode") }
+    }
+    var customBaseURLString: String {
+        didSet { defaults.set(customBaseURLString, forKey: "serverBaseURL") }
+    }
     var baseURLString: String {
-        didSet { defaults.set(baseURLString, forKey: "serverBaseURL") }
+        let custom = customBaseURLString.trimmingCharacters(in: .whitespaces)
+        return devMode && !custom.isEmpty ? custom : Self.defaultBaseURL
     }
     var orgIDString: String {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
@@ -142,7 +151,8 @@ final class AppModel {
     }
 
     init() {
-        baseURLString = defaults.string(forKey: "serverBaseURL") ?? "http://127.0.0.1:8321"
+        devMode = defaults.bool(forKey: "devMode")
+        customBaseURLString = defaults.string(forKey: "serverBaseURL") ?? ""
         orgIDString = defaults.string(forKey: "orgID") ?? ""
         pinsByEvent = (defaults.dictionary(forKey: "pinsByEvent") as? [String: [String]]) ?? [:]
         nicknamesByEvent = (defaults.dictionary(forKey: "nicknamesByEvent") as? [String: [String: String]]) ?? [:]
