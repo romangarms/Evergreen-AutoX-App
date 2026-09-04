@@ -35,6 +35,8 @@ One command for both development and deployment. The first run asks you to choos
 
 Forces the virtualenv path even when Docker is installed, which is faster for iterating on the server code. `python server/app.py` also works once `.venv` exists, but it does not read `.env`, so export the variables yourself.
 
+The public server is https://autox.romangarms.com, which is what the app uses by default. The server itself speaks plain HTTP on port 8321; TLS is terminated by a reverse proxy in front of it, so the app's transport security settings only allow insecure HTTP for local-network addresses.
+
 The server binds to `0.0.0.0` on purpose: when developing, set the app's server URL (Setup tab) to your Mac's LAN IP so your iPhone can reach it.
 
 Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser.

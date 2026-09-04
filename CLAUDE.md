@@ -10,6 +10,7 @@ FastAPI server (`server/app.py`) wrapping the Speedhive/MYLAPS API for Evergreen
 
 - `./start.sh` — prompts for a leaderboard admin password if `.env` lacks one, then runs `docker compose up -d --build` if Docker Compose is available (the public server's deploy path) or otherwise creates `.venv`, sources `.env`, and runs the server in the foreground. `./start.sh local` forces the venv path (use this for dev on the Mac, which has Docker installed); `./start.sh set-password` changes the credentials. Running `./.venv/bin/python server/app.py` directly skips `.env`.
 - Serves on port 8321, bound to `0.0.0.0` intentionally so an iPhone on the same LAN can reach the Mac during development — do not change it to `127.0.0.1`.
+- The public deployment is https://autox.romangarms.com (a reverse proxy terminates TLS and forwards to port 8321). The iOS app's default base URL lives in `AppModel.defaultBaseURL`; `Info.plist` only permits insecure HTTP for local-network addresses, so any non-LAN server must be HTTPS.
 
 ## Lint/format
 

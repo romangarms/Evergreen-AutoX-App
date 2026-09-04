@@ -8,6 +8,7 @@ import db
 import gglc
 import trackaddict
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +17,19 @@ from speedhive.generated.api.session_controller import get_all_lap_times
 from speedhive.wrapper import SpeedhiveClient
 
 app = FastAPI(title="Evergreen AutoX server")
+
+# The leaderboard site at romangarms.com/ar/ reads the API straight from the browser.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        origin.strip()
+        for origin in os.environ.get(
+            "LEADERBOARD_CORS_ORIGINS", "https://romangarms.com"
+        ).split(",")
+        if origin.strip()
+    ],
+    allow_methods=["GET"],
+)
 client = SpeedhiveClient.create()
 
 STATIC_DIR = Path(__file__).parent / "static"
