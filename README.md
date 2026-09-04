@@ -61,6 +61,21 @@ The dev console asks for the login in a dialog on the first edit (or via the Sig
 
 `./start.sh help` lists all commands.
 
+### Leaderboard backups
+
+`server/backup_db.py` snapshots `server/leaderboard.db` with SQLite's online backup API (safe while the server runs) into `/mnt/Data/Backups/autox-leaderboard/` (override with `AUTOX_BACKUP_DIR`). It only writes a new timestamped file when the database content changed since the last snapshot, keeps the newest 365 snapshots (`AUTOX_BACKUP_KEEP`), and refuses to run if the destination isn't on a mounted drive.
+
+On the public server it runs hourly from the user crontab (`crontab -l`), logging to `~/.local/state/autox-backup.log`.
+
+```bash
+python3 server/backup_db.py            # snapshot now
+python3 server/backup_db.py list       # show snapshots
+python3 server/backup_db.py restore leaderboard-20260904-121417.db
+./start.sh                             # restart so the server reopens the restored DB
+```
+
+Restoring keeps the DB it replaced next to it as `server/leaderboard.pre-restore-*.db`.
+
 ## API endpoints
 
 Speedhive-backed:
