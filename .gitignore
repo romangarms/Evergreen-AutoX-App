@@ -247,3 +247,4 @@ fastlane/test_output
 
 # Leaderboard database
 server/leaderboard.db
+server/leaderboard.pre-restore-*.db
