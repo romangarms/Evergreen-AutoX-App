@@ -96,6 +96,19 @@
   .cols .panel.wide { flex: 2; }
   .cols ul.picklist { max-height: 65vh; }
   .cols pre { max-height: 65vh; }
+
+  #auth-btn { font-size: 12px; padding: 0.2rem 0.6rem; }
+  dialog {
+    border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem;
+    background: var(--panel); color: var(--text); width: 300px;
+  }
+  dialog::backdrop { background: rgba(28, 39, 51, 0.35); }
+  dialog h2 { font-size: 1rem; margin: 0 0 0.25rem; }
+  dialog p { margin: 0 0 0.75rem; color: var(--muted); font-size: 12px; }
+  dialog form { display: flex; flex-direction: column; gap: 0.6rem; }
+  dialog .actions { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.25rem; }
+  #login-error { color: var(--danger); font-size: 12px; margin: 0; }
+  #login-error:empty { display: none; }
 </style>
 </head>
 <body>
@@ -108,7 +121,22 @@
   </nav>
   <div style="flex:1"></div>
   <span id="status"></span>
+  <button id="auth-btn" class="btn">Sign in</button>
 </header>
+
+<dialog id="login">
+  <h2>Sign in to edit</h2>
+  <p>Leaderboard edits need the server's admin credentials.</p>
+  <form id="login-form" method="dialog">
+    <label class="field">Username <input id="login-user" autocomplete="username" required></label>
+    <label class="field">Password <input id="login-pass" type="password" autocomplete="current-password" required></label>
+    <p id="login-error"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="login-cancel">Cancel</button>
+      <button type="submit" class="btn primary">Sign in</button>
+    </div>
+  </form>
+</dialog>
 <main>
 
 <section id="tab-leaderboard" class="tab active">
@@ -240,11 +268,60 @@ document.querySelectorAll("nav button").forEach(btn => {
   };
 });
 
+const AUTH_KEY = "lb-auth";
+const auth = {
+  get token() { try { return sessionStorage.getItem(AUTH_KEY); } catch { return null; } },
+  get user() { const t = this.token; return t ? atob(t).split(":")[0] : null; },
+  set(user, pass) { try { sessionStorage.setItem(AUTH_KEY, btoa(`${user}:${pass}`)); } catch {} },
+  clear() { try { sessionStorage.removeItem(AUTH_KEY); } catch {} },
+};
+
+const loginDialog = $("login");
+let loginPending = null;
+function promptLogin(message = "") {
+  if (loginPending) return loginPending;
+  $("login-error").textContent = message;
+  $("login-user").value = auth.user || "admin";
+  $("login-pass").value = "";
+  loginDialog.showModal();
+  $("login-pass").focus();
+  loginPending = new Promise(resolve => {
+    loginDialog.onclose = () => {
+      loginPending = null;
+      resolve(loginDialog.returnValue === "ok");
+    };
+  });
+  return loginPending;
+}
+$("login-form").onsubmit = () => {
+  auth.set($("login-user").value.trim(), $("login-pass").value);
+  renderAuth();
+  loginDialog.close("ok");
+};
+$("login-cancel").onclick = () => loginDialog.close("cancel");
+$("auth-btn").onclick = () => {
+  if (auth.token) { auth.clear(); renderAuth(); } else promptLogin();
+};
+function renderAuth() {
+  $("auth-btn").textContent = auth.token ? `Sign out (${auth.user})` : "Sign in";
+}
+renderAuth();
+
 async function api(url, opts = {}) {
   setStatus((opts.method || "GET") + " " + url + " ...");
-  const res = await fetch(url, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (auth.token) headers.Authorization = "Basic " + auth.token;
+  const res = await fetch(url, { ...opts, headers });
   let data;
   try { data = await res.json(); } catch { data = null; }
+  if (res.status === 401) {
+    const hadToken = !!auth.token;
+    auth.clear();
+    renderAuth();
+    if (await promptLogin(hadToken ? "Wrong username or password." : "")) return api(url, opts);
+    setStatus(`${res.status} ${url}: sign in to edit`, true);
+    throw new Error(url);
+  }
   if (!res.ok) {
     setStatus(`${res.status} ${url}: ${data?.detail ?? ""}`, true);
     throw new Error(url);

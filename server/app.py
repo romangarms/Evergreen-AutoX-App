@@ -1,11 +1,15 @@
+import os
+import secrets
 import sqlite3
 from pathlib import Path
+from typing import Annotated
 
 import db
 import gglc
 import trackaddict
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from speedhive.generated.api.session_controller import get_all_lap_times
@@ -15,6 +19,31 @@ app = FastAPI(title="Evergreen AutoX server")
 client = SpeedhiveClient.create()
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+ADMIN_USER = os.environ.get("LEADERBOARD_ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("LEADERBOARD_ADMIN_PASSWORD")
+basic_auth = HTTPBasic(auto_error=False)
+
+
+def require_admin(
+    credentials: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
+):
+    if not ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=503,
+            detail="Leaderboard edits are disabled: set LEADERBOARD_ADMIN_PASSWORD",
+        )
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode())
+    password_ok = secrets.compare_digest(
+        credentials.password.encode(), ADMIN_PASSWORD.encode()
+    )
+    if not (user_ok and password_ok):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+admin_only = {"dependencies": [Depends(require_admin)]}
 
 
 def _raw_laps(session_id: int) -> list:
@@ -168,7 +197,7 @@ def list_courses():
         return [dict(row) for row in conn.execute("SELECT * FROM courses ORDER BY id")]
 
 
-@app.post("/api/leaderboard/courses")
+@app.post("/api/leaderboard/courses", **admin_only)
 def create_course(course: CourseIn):
     with db.session() as conn:
         try:
@@ -183,7 +212,7 @@ def create_course(course: CourseIn):
         return dict(_get_course(conn, cur.lastrowid))
 
 
-@app.patch("/api/leaderboard/courses/{course_id}")
+@app.patch("/api/leaderboard/courses/{course_id}", **admin_only)
 def update_course(course_id: int, update: CourseUpdate):
     fields = update.model_dump(exclude_unset=True)
     if not fields:
@@ -203,7 +232,7 @@ def update_course(course_id: int, update: CourseUpdate):
         return dict(_get_course(conn, course_id))
 
 
-@app.delete("/api/leaderboard/courses/{course_id}")
+@app.delete("/api/leaderboard/courses/{course_id}", **admin_only)
 def delete_course(course_id: int):
     with db.session() as conn:
         _get_course(conn, course_id)
@@ -225,7 +254,7 @@ def get_leaderboard(course_id: int):
         return {"course": dict(course), "runs": runs}
 
 
-@app.post("/api/leaderboard/courses/{course_id}/runs")
+@app.post("/api/leaderboard/courses/{course_id}/runs", **admin_only)
 def create_run(course_id: int, run: RunIn):
     try:
         time_seconds = db.parse_time(run.time)
@@ -260,7 +289,7 @@ def create_run(course_id: int, run: RunIn):
         return db.run_to_dict(row, course)
 
 
-@app.patch("/api/leaderboard/runs/{run_id}")
+@app.patch("/api/leaderboard/runs/{run_id}", **admin_only)
 def update_run(run_id: int, update: RunUpdate):
     fields = update.model_dump(exclude_unset=True)
     if "time" in fields:
@@ -286,7 +315,7 @@ def update_run(run_id: int, update: RunUpdate):
         return db.run_to_dict(row, course)
 
 
-@app.delete("/api/leaderboard/runs/{run_id}")
+@app.delete("/api/leaderboard/runs/{run_id}", **admin_only)
 def delete_run(run_id: int):
     with db.session() as conn:
         cur = conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))

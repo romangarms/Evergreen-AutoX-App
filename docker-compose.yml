@@ -3,4 +3,7 @@ services:
     build: .
     ports:
       - "8321:8321"
+    environment:
+      LEADERBOARD_ADMIN_USER: ${LEADERBOARD_ADMIN_USER:-admin}
+      LEADERBOARD_ADMIN_PASSWORD: ${LEADERBOARD_ADMIN_PASSWORD:-}
     restart: unless-stopped

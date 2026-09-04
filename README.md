@@ -27,19 +27,37 @@ Four tabs:
 ./start.sh
 ```
 
-Creates the virtualenv and installs dependencies on first run, then starts the server on port 8321. With the venv already set up, `python server/app.py` works too.
+One command for both development and deployment. The first run asks you to choose a leaderboard admin username and password (saved to `.env`, which is gitignored). Then, if Docker Compose is installed, it builds the image and starts the server detached on port 8321 with `restart: unless-stopped`; otherwise it creates a virtualenv, installs dependencies, and runs the server in the foreground. Redeploying is `git pull && ./start.sh`.
+
+```bash
+./start.sh local
+```
+
+Forces the virtualenv path even when Docker is installed, which is faster for iterating on the server code. `python server/app.py` also works once `.venv` exists, but it does not read `.env`, so export the variables yourself.
 
 The server binds to `0.0.0.0` on purpose: when developing, set the app's server URL (Setup tab) to your Mac's LAN IP so your iPhone can reach it.
 
-Open http://localhost:8321/ for a bare-bones debug UI — enter a Speedhive org ID (the number in the org's URL on speedhive.mylaps.com), then click through events → sessions → drivers to see the raw JSON.
+Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser.
 
-### Docker
+### Leaderboard edit auth
+
+Reading the leaderboard is public. Creating, editing, or deleting courses and runs requires HTTP Basic auth with the credentials from `.env`:
+
+| Variable | Meaning |
+| --- | --- |
+| `LEADERBOARD_ADMIN_USER` | Username, defaults to `admin` |
+| `LEADERBOARD_ADMIN_PASSWORD` | Required; with it unset every write endpoint returns 503 |
+
+To change them:
 
 ```bash
-docker compose up -d
+./start.sh set-password
+./start.sh             # restart so the server picks them up
 ```
 
-Builds the server image and runs it on port 8321.
+The dev console asks for the login in a dialog on the first edit (or via the Sign in button in the header) and keeps it for the browser session. From the command line, use `curl -u admin:PASSWORD`.
+
+`./start.sh help` lists all commands.
 
 ## API endpoints
 
@@ -57,5 +75,22 @@ GGLC (scraped from gglotus.org result pages):
 
 - `GET /api/gglc/events` — list of GGLC autocross events
 - `GET /api/gglc/events/{event_date}` — full results for one event (`YYYY-MM-DD` or `YYYYMMDD`)
+
+Custom leaderboard (SQLite in `server/leaderboard.db`; writes need Basic auth):
+
+- `GET /api/leaderboard/courses` — courses
+- `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`)
+- `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
+- `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (deleting removes its runs)
+- `POST /api/leaderboard/courses/{course_id}/runs` — add a run (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`)
+- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run
+
+Legacy runs were set on the old, longer course; their adjusted time is scaled by `distance_miles / legacy_distance_miles`. Average speed is computed from the course distance.
+
+TrackAddict:
+
+- `POST /api/trackaddict/parse` — body is a raw TrackAddict CSV log; returns its laps with times and distances
+
+`server/import_sheet.py` seeds the leaderboard from the HWY 9 Leaderboard spreadsheet snapshot embedded in the script and is safe to re-run.
 
 Laps in the Speedhive API are keyed only by finish position within a session, so drivers are addressed by `position`.
