@@ -15,7 +15,5 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connects to the Evergreen AutoX timing server on your local network.</string>
 </dict>
 </plist>
