@@ -13,9 +13,7 @@ struct SettingsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Color.egGrayDark)
                     if meCandidates.isEmpty {
-                        Text("Pin drivers on the Live tab first, then pick yourself here.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.egGray)
+                        emptyBox("No drivers pinned yet. Star a driver on the Live tab first. Pinned drivers show up here so you can mark one as you.")
                     } else {
                         VStack(spacing: 0) {
                             ForEach(Array(meCandidates.enumerated()), id: \.element.id) { index, driver in
@@ -29,9 +27,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     sectionHeader("NICKNAMES")
                     if model.friends.isEmpty {
-                        Text("Nicknames appear here once you pin drivers.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.egGray)
+                        emptyBox("No drivers pinned yet. Nicknames appear here once you star drivers on the Live tab.")
                     }
                     ForEach(model.friends) { friend in
                         HStack(spacing: 8) {
@@ -87,18 +83,12 @@ struct SettingsView: View {
                         model.devMode.toggle()
                         Task { await model.loadEvents() }
                     } label: {
-                        HStack(spacing: 10) {
-                            Rectangle()
-                                .strokeBorder(model.devMode ? Color.egRed : Color.egDivider, lineWidth: 2)
-                                .background(model.devMode ? Color.egRed : Color.clear)
-                                .frame(width: 14, height: 14)
+                        HStack(spacing: 8) {
+                            EGCheckbox(checked: model.devMode, size: 18)
                             Text("DEV MODE")
-                                .font(.system(size: 11, weight: .heavy))
-                                .kerning(1.1)
                         }
-                        .foregroundStyle(Color.egInk)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(EGChipButtonStyle())
                 }
             }
             .padding(.horizontal, 16)
@@ -110,6 +100,23 @@ struct SettingsView: View {
 
     private var meCandidates: [Driver] {
         model.drivers.filter { model.pins.contains($0.startNumber) || $0.startNumber == model.meNumber }
+    }
+
+    private func emptyBox(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "star")
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(Color.egGray)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .background(Color.egCard)
+        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 2))
     }
 
     private func sectionHeader(_ text: String) -> some View {
@@ -125,10 +132,7 @@ struct SettingsView: View {
             model.meNumber = isMe ? nil : driver.startNumber
         } label: {
             HStack(spacing: 10) {
-                Rectangle()
-                    .strokeBorder(isMe ? Color.egRed : Color.egDivider, lineWidth: 2)
-                    .background(isMe ? Color.egRed : Color.clear)
-                    .frame(width: 14, height: 14)
+                EGCheckbox(checked: isMe)
                 Text(model.displayName(driver))
                     .font(.system(size: 12.5, weight: isMe ? .heavy : .regular))
                     .lineLimit(1)
@@ -140,7 +144,8 @@ struct SettingsView: View {
             }
             .foregroundStyle(Color.egInk)
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
             .overlay(alignment: .top) {
                 if !isFirst { Color.egHairline.frame(height: 1) }
             }

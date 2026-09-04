@@ -45,9 +45,7 @@ struct ResultsColumnHeader: View {
             }
             EGColumnLabel(text: "DRIVER").frame(maxWidth: .infinity, alignment: .leading)
             EGColumnLabel(text: "BEST").frame(width: 70, alignment: .trailing)
-            if showsPin {
-                Color.clear.frame(width: 30, height: 1)
-            }
+            Color.clear.frame(width: showsPin ? 36 : 12, height: 1)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -101,72 +99,84 @@ struct ResultRowView: View {
         let isMe = driver.startNumber == model.meNumber
         let nickname = model.nicknames[driver.startNumber]
 
-        Button {
-            if let onTap {
-                onTap()
-            } else {
-                model.open(screen: .driver(driver.position))
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text("P\(driver.position)")
-                    .font(.system(size: 14, weight: .heavy))
-                    .frame(width: 34, alignment: .leading)
-                if showsNumber {
-                    Text("#\(driver.startNumber)")
-                        .font(.system(size: 12))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.egGray)
-                        .frame(width: 40, alignment: .leading)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+        HStack(spacing: 0) {
+            Button {
+                if let onTap {
+                    onTap()
+                } else {
+                    model.open(screen: .driver(driver.position))
                 }
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text(model.displayName(driver))
-                            .font(.system(size: 13, weight: .heavy))
-                            .lineLimit(1)
-                        if isMe {
-                            EGTag(text: "ME", background: .egInk, foreground: .egBg, size: 8.5)
-                        }
-                    }
-                    Text(subtitle(nickname: nickname))
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.egGray)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(driver.bestString)
+            } label: {
+                HStack(spacing: 8) {
+                    Text("P\(driver.position)")
                         .font(.system(size: 14, weight: .heavy))
-                        .monospacedDigit()
-                    Text("\(driver.runs.count) runs")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(Color.egGray)
-                }
-                .frame(width: 70, alignment: .trailing)
-                if showsPin {
-                    Button {
-                        model.togglePin(driver.startNumber)
-                    } label: {
-                        Image(systemName: pinned ? "star.fill" : "star")
-                            .font(.system(size: 14))
-                            .foregroundStyle(pinned ? Color.egRed : Color.egGrayLight)
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle().inset(by: -11))
+                        .frame(width: 34, alignment: .leading)
+                    if showsNumber {
+                        Text("#\(driver.startNumber)")
+                            .font(.system(size: 12))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.egGray)
+                            .frame(width: 40, alignment: .leading)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
-                    .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(model.displayName(driver))
+                                .font(.system(size: 13, weight: .heavy))
+                                .lineLimit(1)
+                            if isMe {
+                                EGTag(text: "ME", background: .egInk, foreground: .egBg, size: 8.5)
+                            }
+                        }
+                        Text(subtitle(nickname: nickname))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.egGray)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(driver.bestString)
+                            .font(.system(size: 14, weight: .heavy))
+                            .monospacedDigit()
+                        Text(driver.runs.count == 1 ? "1 run" : "\(driver.runs.count) runs")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(Color.egGray)
+                    }
+                    .frame(width: 70, alignment: .trailing)
+                    if !showsPin {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
+                            .frame(width: 12)
+                    }
                 }
+                .padding(.leading, 16)
+                .padding(.trailing, showsPin ? 8 : 16)
+                .padding(.vertical, 9)
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(Color.egInk)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .background(pinned ? Color.egPinnedBg : isMe ? Color.egMeBg : Color.clear)
-            .overlay(alignment: .top) {
-                Color.egHairline.frame(height: 1)
+            .buttonStyle(.plain)
+
+            if showsPin {
+                Button {
+                    model.togglePin(driver.startNumber)
+                } label: {
+                    Image(systemName: pinned ? "star.fill" : "star")
+                        .font(.system(size: 18))
+                        .foregroundStyle(pinned ? Color.egRed : Color.egGray)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle().inset(by: -8))
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 16)
             }
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(Color.egInk)
+        .background(pinned ? Color.egPinnedBg : isMe ? Color.egMeBg : Color.clear)
+        .overlay(alignment: .top) {
+            Color.egHairline.frame(height: 1)
+        }
     }
 
     private func subtitle(nickname: String?) -> String {

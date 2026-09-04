@@ -106,22 +106,55 @@ struct EGButtonStyle: ButtonStyle {
     }
 }
 
+struct EGChipButtonStyle: ButtonStyle {
+    var tint = Color.egInk
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 10.5, weight: .heavy))
+            .kerning(0.9)
+            .lineLimit(1)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(Color.egCard)
+            .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1.5))
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.55 : 1)
+    }
+}
+
+struct EGCheckbox: View {
+    let checked: Bool
+    var size: CGFloat = 20
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .strokeBorder(checked ? Color.egRed : Color.egDivider, lineWidth: 2)
+                .background(checked ? Color.egRed : Color.egCard)
+            if checked {
+                Image(systemName: "checkmark")
+                    .font(.system(size: size * 0.5, weight: .black))
+                    .foregroundStyle(Color.egOnRed)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 struct EGBackButton: View {
     let label: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 11, weight: .heavy))
                 Text(label)
-                    .font(.system(size: 11, weight: .heavy))
-                    .kerning(0.9)
             }
-            .foregroundStyle(Color.egRed)
-            .contentShape(Rectangle().inset(by: -15))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(EGChipButtonStyle(tint: .egRed))
     }
 }

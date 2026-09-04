@@ -56,18 +56,8 @@ struct FriendsView: View {
             Button {
                 model.toggleCompareSelection(friend.startNumber)
             } label: {
-                ZStack {
-                    Rectangle()
-                        .strokeBorder(selected ? Color.egRed : Color.egDivider, lineWidth: 2)
-                        .background(selected ? Color.egRed : Color.clear)
-                    if selected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundStyle(Color.egOnRed)
-                    }
-                }
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle().inset(by: -15))
+                EGCheckbox(checked: selected, size: 26)
+                    .contentShape(Rectangle().inset(by: -12))
             }
             .buttonStyle(.plain)
 

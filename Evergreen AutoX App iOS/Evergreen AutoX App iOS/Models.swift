@@ -223,7 +223,16 @@ struct Driver: Identifiable {
     // GGLC "total" already includes cone penalties (1s/cone).
     init(position: Int, gglc: GGLCDriver, carClass: String?, positionInClass: Int?) {
         self.position = position
-        name = gglc.name.isEmpty ? "(unknown)" : gglc.name
+        let carName = [gglc.make, gglc.model].filter { !$0.isEmpty }.joined(separator: " ")
+        name = if !gglc.name.isEmpty {
+            gglc.name
+        } else if !carName.isEmpty {
+            carName
+        } else if !gglc.car.isEmpty {
+            "Car \(gglc.car)"
+        } else {
+            "(unknown)"
+        }
         startNumber = gglc.car.isEmpty ? "P\(position)" : gglc.car
         self.carClass = carClass
         self.positionInClass = positionInClass

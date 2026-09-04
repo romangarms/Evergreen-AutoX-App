@@ -64,8 +64,10 @@ final class AppModel {
 
     var liveScrollOffset: CGFloat = 0
     var eventSearch = ""
-    var eventMonthFilter: String?
-    var eventSourceFilter: EventSource?
+    var expandedEventSources: Set<EventSource> = []
+    var speedhiveAutoXOnly: Bool {
+        didSet { defaults.set(speedhiveAutoXOnly, forKey: "speedhiveAutoXOnly") }
+    }
     var orgName: String?
     var events: [SHEvent] = []
     var leaderboardCourses: [LBCourse] = []
@@ -85,7 +87,7 @@ final class AppModel {
     var isRenaming = false
     var renameText = ""
 
-    static let defaultBaseURL = "http://mini.romangarms.com:8321"
+    static let defaultBaseURL = "https://autox.romangarms.com"
 
     var devMode: Bool {
         didSet { defaults.set(devMode, forKey: "devMode") }
@@ -152,6 +154,7 @@ final class AppModel {
 
     init() {
         devMode = defaults.bool(forKey: "devMode")
+        speedhiveAutoXOnly = defaults.object(forKey: "speedhiveAutoXOnly") as? Bool ?? true
         customBaseURLString = defaults.string(forKey: "serverBaseURL") ?? ""
         orgIDString = defaults.string(forKey: "orgID") ?? ""
         pinsByEvent = (defaults.dictionary(forKey: "pinsByEvent") as? [String: [String]]) ?? [:]
@@ -203,21 +206,18 @@ final class AppModel {
         leaderboardDrivers.first { $0.position == position }
     }
 
-    var eventsHeaderTitle: String {
-        let source = switch eventSourceFilter {
-        case .speedhive: orgName ?? EventSource.speedhive.label
-        case .some(let filter): filter.label
-        case nil: "All Sources"
-        }
-        guard let month = eventMonthFilter else { return source }
-        return "\(source) · \(Self.monthLabel(month))"
+    var selectedEvent: SHEvent? { events.first { $0.id == selectedEventID } }
+
+    // The Speedhive org also times oval racing; only its autocross events
+    // carry "AutoX" in the name.
+    static func isAutoX(_ event: SHEvent) -> Bool {
+        event.source != .speedhive || event.name.localizedCaseInsensitiveContains("autox")
+    }
+    var hasSpeedhiveAutoXEvents: Bool {
+        events.contains { $0.source == .speedhive && Self.isAutoX($0) }
     }
 
-    var selectedEvent: SHEvent? { events.first { $0.id == selectedEventID } }
     var recentEvents: [SHEvent] { recentEventIDs.compactMap { id in events.first { $0.id == id } } }
-    var eventMonths: [String] {
-        Set(events.compactMap { Self.eventMonth($0) }).sorted(by: >)
-    }
 
     static func eventMonth(_ event: SHEvent) -> String? {
         event.startDate.flatMap { $0.count >= 7 ? String($0.prefix(7)) : nil }
@@ -299,14 +299,47 @@ final class AppModel {
         isRenaming = false
     }
 
-    func open(screen: Screen, autoPickSingleSession: Bool = true) {
+    func open(screen: Screen) {
         isRenaming = false
         self.screen = screen
         if case .sessions(let eventID) = screen {
-            loadViewedSessions(eventID: eventID, autoPick: autoPickSingleSession)
+            loadViewedSessions(eventID: eventID)
         } else if case .leaderboard(let courseID) = screen {
             loadLeaderboard(courseID: courseID)
         }
+    }
+
+    func openEvent(_ eventID: Int) {
+        guard let event = events.first(where: { $0.id == eventID }) else { return }
+        if event.source == .trackaddict {
+            open(screen: .leaderboard(Self.leaderboardCourseID(eventID: eventID)))
+            return
+        }
+        if eventID == selectedEventID, !drivers.isEmpty {
+            showLive()
+            return
+        }
+        switchToLive()
+        sessions = []
+        selectedSessionID = nil
+        isLoading = true
+        Task { await selectEvent(eventID) }
+    }
+
+    private func showLive() {
+        screen = nil
+        tab = .live
+        isRenaming = false
+    }
+
+    private func switchToLive() {
+        showLive()
+        // Stale rows from the old session would make a failed load look like
+        // the switch never happened, especially between same-named events.
+        drivers = []
+        compareSelection = []
+        friendsScreen = nil
+        liveScrollOffset = 0
     }
 
     func goBack() {
@@ -433,6 +466,16 @@ final class AppModel {
         }
     }
 
+    // Speedhive lists sessions grouped by class, not by time, so "first"
+    // is usually a morning practice.
+    static func latestSession(_ sessions: [SHSession]) -> SHSession? {
+        sessions.max { ($0.startTime ?? "") < ($1.startTime ?? "") }
+    }
+
+    static func byMostRecent(_ sessions: [SHSession]) -> [SHSession] {
+        sessions.sorted { ($0.startTime ?? "") > ($1.startTime ?? "") }
+    }
+
     private static func gglcSessions(eventID: Int) -> [SHSession] {
         [SHSession(id: eventID, name: "Results", type: nil, startTime: nil, resultStatus: nil)]
     }
@@ -485,7 +528,7 @@ final class AppModel {
                 ? Self.gglcSessions(eventID: eventID)
                 : try await client.sessions(eventID: eventID)
             let saved = sessionChoice[String(eventID)]
-            let sessionID = sessions.first { $0.id == saved }?.id ?? sessions.first?.id
+            let sessionID = sessions.first { $0.id == saved }?.id ?? Self.latestSession(sessions)?.id
             if let sessionID {
                 await selectSession(sessionID)
             } else {
@@ -529,16 +572,14 @@ final class AppModel {
         isLoading = false
     }
 
-    private func loadViewedSessions(eventID: Int, autoPick: Bool) {
+    private func loadViewedSessions(eventID: Int) {
         viewedSessionsError = nil
         if eventID == selectedEventID {
             viewedSessions = sessions
-            if autoPick { autoPickIfOnlyChoice(eventID: eventID) }
             return
         }
         if eventID < 0 {
             viewedSessions = Self.gglcSessions(eventID: eventID)
-            if autoPick { autoPickIfOnlyChoice(eventID: eventID) }
             return
         }
         viewedSessions = []
@@ -547,7 +588,6 @@ final class AppModel {
                 let fetched = try await client.sessions(eventID: eventID)
                 guard case .some(.sessions(eventID)) = screen else { return }
                 viewedSessions = fetched
-                if autoPick { autoPickIfOnlyChoice(eventID: eventID) }
             } catch {
                 guard case .some(.sessions(eventID)) = screen else { return }
                 viewedSessionsError = error.localizedDescription
@@ -555,25 +595,17 @@ final class AppModel {
         }
     }
 
-    private func autoPickIfOnlyChoice(eventID: Int) {
-        guard viewedSessions.count == 1,
-              case .some(.sessions(eventID)) = screen else { return }
-        pickSession(eventID: eventID, sessionID: viewedSessions[0].id)
-    }
-
     func pickSession(eventID: Int, sessionID: Int) {
+        if eventID == selectedEventID, sessionID == selectedSessionID, !drivers.isEmpty {
+            showLive()
+            return
+        }
         selectedEventID = eventID
         defaults.set(eventID, forKey: "selectedEventID")
         recordRecentEvent(eventID)
         sessions = viewedSessions
-        // Stale rows from the old session would make a failed load look like
-        // the switch never happened, especially between same-named events.
-        drivers = []
-        screen = nil
-        tab = .live
-        compareSelection = []
-        friendsScreen = nil
-        liveScrollOffset = 0
+        switchToLive()
+        isLoading = true
         Task { await selectSession(sessionID) }
     }
 }
