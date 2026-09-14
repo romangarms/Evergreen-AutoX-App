@@ -18,8 +18,8 @@ Four tabs:
 
 - **Live** — the leaderboard for the selected session: position, car number, best time, and run count for every entry. Your own car gets a **ME** tag and highlight, and you can star cars to keep an eye on them. Pull to refresh.
 - **Friends** — pin the cars you care about, see everyone's gap to your best time, and pick any two for a head-to-head: best/average/spread stats, a times-over-the-day chart, and a run-by-run gap breakdown.
-- **Events** — browse and search an organization's events, then drill into sessions and individual drivers.
-- **Setup** — mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, switch Speedhive organizations, and point the app at your server.
+- **Events** — browse and search an organization's events, then drill into sessions and individual drivers. The **Leaderboards** section holds community leaderboards: anyone can create one from the app, post times to any board (by hand or from a TrackAddict CSV export), and report or hide a board or run. Creators can edit and delete their own boards and any run on them.
+- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, switch Speedhive organizations, and point the app at your server.
 
 ## Running the server
 
@@ -41,9 +41,14 @@ The server binds to `0.0.0.0` on purpose: when developing, set the app's server 
 
 Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser.
 
-### Leaderboard edit auth
+### Leaderboard auth
 
-Reading the leaderboard is public. Creating, editing, or deleting courses and runs requires HTTP Basic auth with the credentials from `.env`:
+Reading the leaderboard is public. Writes accept two kinds of caller:
+
+- **Device token** (`Authorization: Bearer <token>`): the app mints a random token on first launch and keeps it in the Keychain. A token owns the courses and runs it created and can edit or delete those, plus any run on a course it owns. Each token can create at most 20 courses.
+- **Admin** (HTTP Basic auth with the credentials from `.env`): can edit or delete anything, and is the only one who can read or dismiss reports. Courses and runs created by the admin have no owner, so only the admin can change them.
+
+Admin credentials:
 
 | Variable | Meaning |
 | --- | --- |
@@ -93,14 +98,16 @@ GGLC (scraped from gglotus.org result pages):
 - `GET /api/gglc/events` — list of GGLC autocross events
 - `GET /api/gglc/events/{event_date}` — full results for one event (`YYYY-MM-DD` or `YYYYMMDD`)
 
-Custom leaderboard (SQLite in `server/leaderboard.db`; writes need Basic auth):
+Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device token or admin login, see [Leaderboard auth](#leaderboard-auth)). Responses carry `is_owner` for the caller and never expose owner tokens:
 
 - `GET /api/leaderboard/courses` — courses
-- `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`)
+- `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`, `description`, `created_by`)
 - `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
-- `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (deleting removes its runs)
-- `POST /api/leaderboard/courses/{course_id}/runs` — add a run (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`)
-- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run
+- `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (owner or admin; deleting removes its runs)
+- `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`)
+- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
+- `POST /api/leaderboard/reports` — flag a course or run (`target_type` of `course`/`run`, `target_id`, `reason`)
+- `GET` / `DELETE /api/leaderboard/reports[/{report_id}]` — admin: list reports with their targets, or dismiss one
 
 Legacy runs were set on the old, longer course; their adjusted time is scaled by `distance_miles / legacy_distance_miles`. Average speed is computed from the course distance.
 

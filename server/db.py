@@ -9,7 +9,11 @@ CREATE TABLE IF NOT EXISTS courses (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     distance_miles REAL,
-    legacy_distance_miles REAL
+    legacy_distance_miles REAL,
+    description TEXT,
+    owner_id TEXT,
+    created_by TEXT,
+    created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -26,9 +30,37 @@ CREATE TABLE IF NOT EXISTS runs (
     legacy INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    owner_id TEXT
+);
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY,
+    target_type TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    reason TEXT,
+    reporter_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
+
+# Columns added after the first release. SQLite's ALTER TABLE can't add a
+# column with a non-constant default, so created_at is nullable here and
+# filled in by the INSERT.
+ADDED_COLUMNS = [
+    ("courses", "description", "TEXT"),
+    ("courses", "owner_id", "TEXT"),
+    ("courses", "created_by", "TEXT"),
+    ("courses", "created_at", "TEXT"),
+    ("runs", "owner_id", "TEXT"),
+]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in ADDED_COLUMNS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    conn.commit()
 
 
 def connect() -> sqlite3.Connection:
@@ -36,6 +68,7 @@ def connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -73,8 +106,20 @@ def adjusted_seconds(run: sqlite3.Row | dict, course: sqlite3.Row | dict) -> flo
     return time
 
 
-def run_to_dict(run: sqlite3.Row, course: sqlite3.Row | dict) -> dict:
+def course_to_dict(course: sqlite3.Row, viewer_id: str | None = None) -> dict:
+    out = dict(course)
+    owner = out.pop("owner_id")
+    out["is_owner"] = owner is not None and owner == viewer_id
+    return out
+
+
+# owner_id is the device's bearer token, so it must never leave the server.
+def run_to_dict(
+    run: sqlite3.Row, course: sqlite3.Row | dict, viewer_id: str | None = None
+) -> dict:
     out = dict(run)
+    owner = out.pop("owner_id", None)
+    out["is_owner"] = owner is not None and owner == viewer_id
     out["legacy"] = bool(out["legacy"])
     out["time"] = format_time(out["time_seconds"])
     adj = adjusted_seconds(run, course)

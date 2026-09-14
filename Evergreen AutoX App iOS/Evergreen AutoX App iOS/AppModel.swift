@@ -102,6 +102,17 @@ final class AppModel {
     var orgIDString: String {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
     }
+    // Default driver/creator name on anything posted to a leaderboard.
+    var posterName: String {
+        didSet { defaults.set(posterName, forKey: "posterName") }
+    }
+    var acceptedGuidelines: Bool {
+        didSet { defaults.set(acceptedGuidelines, forKey: "acceptedGuidelines") }
+    }
+    // Boards this device chose not to see; the server never learns about it.
+    private(set) var hiddenCourseIDs: Set<Int> {
+        didSet { defaults.set(hiddenCourseIDs.sorted(), forKey: "hiddenCourseIDs") }
+    }
     private var pinsByEvent: [String: [String]] {
         didSet { defaults.set(pinsByEvent, forKey: "pinsByEvent") }
     }
@@ -157,6 +168,9 @@ final class AppModel {
         speedhiveAutoXOnly = defaults.object(forKey: "speedhiveAutoXOnly") as? Bool ?? true
         customBaseURLString = defaults.string(forKey: "serverBaseURL") ?? ""
         orgIDString = defaults.string(forKey: "orgID") ?? ""
+        posterName = defaults.string(forKey: "posterName") ?? ""
+        acceptedGuidelines = defaults.bool(forKey: "acceptedGuidelines")
+        hiddenCourseIDs = Set((defaults.array(forKey: "hiddenCourseIDs") as? [Int]) ?? [])
         pinsByEvent = (defaults.dictionary(forKey: "pinsByEvent") as? [String: [String]]) ?? [:]
         nicknamesByEvent = (defaults.dictionary(forKey: "nicknamesByEvent") as? [String: [String: String]]) ?? [:]
         meNumberByEvent = (defaults.dictionary(forKey: "meNumberByEvent") as? [String: String]) ?? [:]
@@ -182,7 +196,10 @@ final class AppModel {
     }
 
     private var client: APIClient {
-        APIClient(baseURL: URL(string: baseURLString.hasSuffix("/") ? baseURLString : baseURLString + "/") ?? URL(filePath: "/"))
+        APIClient(
+            baseURL: URL(string: baseURLString.hasSuffix("/") ? baseURLString : baseURLString + "/") ?? URL(filePath: "/"),
+            deviceToken: DeviceIdentity.token
+        )
     }
 
     var orgID: Int {
@@ -311,7 +328,7 @@ final class AppModel {
 
     func openEvent(_ eventID: Int) {
         guard let event = events.first(where: { $0.id == eventID }) else { return }
-        if event.source == .trackaddict {
+        if event.source == .leaderboard {
             open(screen: .leaderboard(Self.leaderboardCourseID(eventID: eventID)))
             return
         }
@@ -402,7 +419,7 @@ final class AppModel {
             let saved = defaults.object(forKey: "selectedEventID") as? Int
             // Leaderboards have no sessions, so they can't be the Live event.
             let eventID = events.first { $0.id == saved }?.id
-                ?? events.first { $0.source != .trackaddict }?.id
+                ?? events.first { $0.source != .leaderboard }?.id
             if let eventID {
                 await selectEvent(eventID)
             } else {
@@ -437,18 +454,91 @@ final class AppModel {
     private func loadLeaderboardEvents() async -> [SHEvent] {
         let courses = (try? await client.leaderboardCourses()) ?? []
         leaderboardCourses = courses
-        return courses.map { course in
-            SHEvent(
-                id: Self.leaderboardEventID(courseID: course.id),
-                name: course.name,
-                startDate: nil,
-                location: SHLocation(
-                    name: "TrackAddict Leaderboard",
-                    lengthLabel: course.distanceMiles.map { String(format: "%.2f mi", $0) }
-                ),
-                source: .trackaddict
-            )
+        return courses
+            .filter { !hiddenCourseIDs.contains($0.id) }
+            .map(Self.leaderboardEvent)
+    }
+
+    private static func leaderboardEvent(_ course: LBCourse) -> SHEvent {
+        SHEvent(
+            id: leaderboardEventID(courseID: course.id),
+            name: course.name,
+            startDate: nil,
+            location: SHLocation(
+                name: course.createdBy.map { "by \($0)" },
+                lengthLabel: course.distanceMiles.map { String(format: "%.2f mi", $0) }
+            ),
+            source: .leaderboard
+        )
+    }
+
+    private func refreshLeaderboardEvents() async {
+        let leaderboardEvents = await loadLeaderboardEvents()
+        events = events.filter { $0.source != .leaderboard } + leaderboardEvents
+    }
+
+    var ownedCourseCount: Int { leaderboardCourses.count { $0.isOwner } }
+    var hiddenCourseCount: Int { hiddenCourseIDs.count }
+
+    func createCourse(_ input: LBCourseInput) async throws {
+        let course = try await client.createCourse(input)
+        await refreshLeaderboardEvents()
+        open(screen: .leaderboard(course.id))
+        tab = .events
+    }
+
+    func updateCourse(id: Int, _ input: LBCourseInput) async throws {
+        _ = try await client.updateCourse(id: id, input)
+        await refreshLeaderboardEvents()
+        loadLeaderboard(courseID: id)
+    }
+
+    func deleteCourse(id: Int) async throws {
+        try await client.deleteCourse(id: id)
+        await refreshLeaderboardEvents()
+        leaveLeaderboard(id)
+    }
+
+    func hideCourse(id: Int) {
+        hiddenCourseIDs.insert(id)
+        events.removeAll { $0.id == Self.leaderboardEventID(courseID: id) }
+        leaveLeaderboard(id)
+    }
+
+    func unhideAllCourses() {
+        hiddenCourseIDs = []
+        Task { await refreshLeaderboardEvents() }
+    }
+
+    private func leaveLeaderboard(_ courseID: Int) {
+        switch screen {
+        case .leaderboard(courseID), .leaderboardDriver(courseID, _):
+            screen = nil
+            tab = .events
+        default:
+            break
         }
+    }
+
+    func addRun(courseID: Int, _ input: LBRunInput) async throws {
+        _ = try await client.createRun(courseID: courseID, input)
+        loadLeaderboard(courseID: courseID)
+    }
+
+    // Ranks shift after a deletion, so the driver page being viewed may no
+    // longer be the same person; the board is the only safe place to land.
+    func deleteRun(id: Int, courseID: Int) async throws {
+        try await client.deleteRun(id: id)
+        screen = .leaderboard(courseID)
+        loadLeaderboard(courseID: courseID)
+    }
+
+    func report(_ target: LBReportTarget, reason: String) async throws {
+        try await client.report(LBReportInput(target: target, reason: reason))
+    }
+
+    func parseTrackAddict(csv: Data) async throws -> [TALap] {
+        try await client.parseTrackAddict(csv: csv).laps
     }
 
     private func loadLeaderboard(courseID: Int) {

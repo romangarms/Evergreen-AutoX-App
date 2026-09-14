@@ -6,13 +6,13 @@ struct SHOrg: Codable {
 }
 
 enum EventSource: String, CaseIterable, Hashable {
-    case speedhive, gglc, trackaddict
+    case speedhive, gglc, leaderboard
 
     var label: String {
         switch self {
         case .speedhive: "Speedhive"
         case .gglc: "GGLC"
-        case .trackaddict: "TrackAddict"
+        case .leaderboard: "Leaderboards"
         }
     }
 }
@@ -112,12 +112,130 @@ struct LBCourse: Codable, Identifiable, Hashable {
     let name: String
     let distanceMiles: Double?
     let legacyDistanceMiles: Double?
+    let description: String?
+    let createdBy: String?
+    let isOwner: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, description
         case distanceMiles = "distance_miles"
         case legacyDistanceMiles = "legacy_distance_miles"
+        case createdBy = "created_by"
+        case isOwner = "is_owner"
     }
+
+    // A server that predates ownership sends no is_owner; treat its
+    // boards as someone else's rather than dropping the whole list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        distanceMiles = try c.decodeIfPresent(Double.self, forKey: .distanceMiles)
+        legacyDistanceMiles = try c.decodeIfPresent(Double.self, forKey: .legacyDistanceMiles)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        createdBy = try c.decodeIfPresent(String.self, forKey: .createdBy)
+        isOwner = try c.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
+    }
+}
+
+struct LBCourseInput: Encodable {
+    var name: String
+    var distanceMiles: Double?
+    var description: String?
+    var createdBy: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, description
+        case distanceMiles = "distance_miles"
+        case createdBy = "created_by"
+    }
+
+    // Distance and description are sent as explicit nulls so an edit can
+    // clear them; a missing key would leave the old value in place.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(distanceMiles, forKey: .distanceMiles)
+        try container.encode(description, forKey: .description)
+        try container.encodeIfPresent(createdBy, forKey: .createdBy)
+    }
+}
+
+struct LBRunInput: Encodable {
+    var driver: String
+    var time: String
+    var vehicle: String?
+    var hp: Int?
+    var topSpeedMph: Double?
+    var runDate: String?
+    var conditions: String?
+    var notes: String?
+    var source: String
+
+    enum CodingKeys: String, CodingKey {
+        case driver, time, vehicle, hp, conditions, notes, source
+        case topSpeedMph = "top_speed_mph"
+        case runDate = "run_date"
+    }
+}
+
+enum LBReportTarget: Hashable, Identifiable {
+    case course(Int)
+    case run(Int)
+
+    var id: String {
+        switch self {
+        case .course(let id): "course-\(id)"
+        case .run(let id): "run-\(id)"
+        }
+    }
+}
+
+struct LBReportInput: Encodable {
+    let targetType: String
+    let targetId: Int
+    let reason: String
+
+    init(target: LBReportTarget, reason: String) {
+        switch target {
+        case .course(let id):
+            targetType = "course"
+            targetId = id
+        case .run(let id):
+            targetType = "run"
+            targetId = id
+        }
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case reason
+        case targetType = "target_type"
+        case targetId = "target_id"
+    }
+}
+
+struct TALap: Decodable, Identifiable {
+    let lap: Int
+    let timeSeconds: Double?
+    let time: String?
+    let topSpeedMph: Double?
+    let distanceMiles: Double?
+    let avgSpeedMph: Double?
+
+    var id: Int { lap }
+
+    enum CodingKeys: String, CodingKey {
+        case lap, time
+        case timeSeconds = "time_seconds"
+        case topSpeedMph = "top_speed_mph"
+        case distanceMiles = "distance_miles"
+        case avgSpeedMph = "avg_speed_mph"
+    }
+}
+
+struct TAParsedLog: Decodable {
+    let laps: [TALap]
 }
 
 struct LBCourseDetail: Codable {
@@ -137,15 +255,36 @@ struct LBRun: Codable, Identifiable {
     let topSpeedMph: Double?
     let runDate: String?
     let conditions: String?
+    let notes: String?
     let legacy: Bool
+    let isOwner: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, driver, vehicle, hp, time, conditions, legacy
+        case id, driver, vehicle, hp, time, conditions, notes, legacy
         case adjustedSeconds = "adjusted_seconds"
         case adjustedTime = "adjusted_time"
         case avgSpeedMph = "avg_speed_mph"
         case topSpeedMph = "top_speed_mph"
         case runDate = "run_date"
+        case isOwner = "is_owner"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        driver = try c.decode(String.self, forKey: .driver)
+        vehicle = try c.decodeIfPresent(String.self, forKey: .vehicle)
+        hp = try c.decodeIfPresent(Int.self, forKey: .hp)
+        time = try c.decode(String.self, forKey: .time)
+        adjustedSeconds = try c.decode(Double.self, forKey: .adjustedSeconds)
+        adjustedTime = try c.decode(String.self, forKey: .adjustedTime)
+        avgSpeedMph = try c.decodeIfPresent(Double.self, forKey: .avgSpeedMph)
+        topSpeedMph = try c.decodeIfPresent(Double.self, forKey: .topSpeedMph)
+        runDate = try c.decodeIfPresent(String.self, forKey: .runDate)
+        conditions = try c.decodeIfPresent(String.self, forKey: .conditions)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        legacy = try c.decode(Bool.self, forKey: .legacy)
+        isOwner = try c.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EventsView: View {
     @Environment(AppModel.self) private var model
+    @State private var showNewCourse = false
 
     // Three sections must fit on one screen with the search field, so
     // each shows only its newest few until expanded.
@@ -52,6 +53,9 @@ struct EventsView: View {
             }
             .refreshable { await model.loadEvents() }
         }
+        .sheet(isPresented: $showNewCourse) {
+            GuidelinesGate { CourseFormView() }
+        }
     }
 
     private var query: String {
@@ -66,8 +70,10 @@ struct EventsView: View {
         }
     }
 
+    // The leaderboards section stays visible when empty so the button to
+    // create one is always reachable.
     private var visibleSections: [SourceSection] {
-        sections.filter { !$0.events.isEmpty }
+        sections.filter { !$0.events.isEmpty || ($0.source == .leaderboard && !isSearching) }
     }
 
     // Searching looks through everything; the toggle only shapes browsing.
@@ -85,7 +91,7 @@ struct EventsView: View {
     private func rows(_ section: SourceSection) -> [Row] {
         let expanded = isSearching || model.expandedEventSources.contains(section.source)
         let events = expanded ? section.events : Array(section.events.prefix(Self.collapsedCount))
-        guard expanded, !isSearching, section.source != .trackaddict else {
+        guard expanded, !isSearching, section.source != .leaderboard else {
             return events.map(Row.event)
         }
         var rows: [Row] = []
@@ -118,6 +124,18 @@ struct EventsView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                if section.source == .leaderboard, !isSearching {
+                    Button {
+                        showNewCourse = true
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .black))
+                            Text("NEW")
+                        }
+                    }
+                    .buttonStyle(EGChipButtonStyle(tint: .egRed))
+                }
                 if expandable {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -141,6 +159,15 @@ struct EventsView: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
 
+            if section.source == .leaderboard, section.events.isEmpty {
+                Text("No leaderboards yet. Tap NEW to start one for your course.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.egGrayDark)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            }
+
             ForEach(rows(section)) { row in
                 switch row {
                 case .month(let month):
@@ -163,7 +190,7 @@ struct EventsView: View {
         switch source {
         case .speedhive: model.orgName
         case .gglc: "Golden Gate Lotus Club"
-        case .trackaddict: "Leaderboards"
+        case .leaderboard: "Community"
         }
     }
 
@@ -229,7 +256,7 @@ struct EventsView: View {
                 if selected {
                     EGTag(text: "SELECTED", size: 9)
                         .padding(.trailing, 8)
-                } else if event.source != .trackaddict, event.id == model.events.first?.id {
+                } else if event.source != .leaderboard, event.id == model.events.first?.id {
                     EGTag(text: "LATEST", background: .egInk, foreground: .egBg, size: 9)
                         .padding(.trailing, 8)
                 }
@@ -250,14 +277,15 @@ struct EventsView: View {
 
     // Most events share a name, so the date is what tells rows apart.
     private func title(_ event: SHEvent) -> String {
-        guard event.source != .trackaddict else { return event.name }
+        guard event.source != .leaderboard else { return event.name }
         return AppModel.eventDate(event.startDate) ?? event.name
     }
 
     private func subtitle(_ event: SHEvent) -> String {
         switch event.source {
-        case .trackaddict:
-            return event.location?.lengthLabel.map { "\($0) course" } ?? "Leaderboard"
+        case .leaderboard:
+            let parts = [event.location?.lengthLabel.map { "\($0) course" }, event.location?.name].compactMap(\.self)
+            return parts.isEmpty ? "Community leaderboard" : parts.joined(separator: " · ")
         case .gglc:
             return AppModel.eventDate(event.startDate) == nil ? "" : event.name
         case .speedhive:

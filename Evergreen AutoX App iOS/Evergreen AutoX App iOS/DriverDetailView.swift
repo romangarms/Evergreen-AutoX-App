@@ -161,6 +161,11 @@ struct EGStatsGrid: View {
 struct DriverRunsTable: View {
     let driver: Driver
     var runDetail: ((Run) -> String?)?
+    var canDelete: ((Run) -> Bool)?
+    var onDelete: ((Run) -> Void)?
+    var onReport: ((Run) -> Void)?
+
+    private var hasMenu: Bool { onReport != nil || onDelete != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -169,6 +174,9 @@ struct DriverRunsTable: View {
                 EGColumnLabel(text: "TIME").frame(maxWidth: .infinity, alignment: .leading)
                 EGColumnLabel(text: "MPH").frame(width: 52, alignment: .trailing)
                 EGColumnLabel(text: "Δ BEST").frame(width: 66, alignment: .trailing)
+                if hasMenu {
+                    Color.clear.frame(width: 30, height: 1)
+                }
             }
             .padding(.bottom, 6)
 
@@ -202,6 +210,9 @@ struct DriverRunsTable: View {
                             .monospacedDigit()
                             .foregroundStyle(isBest ? Color.egRed : Color.egGray)
                             .frame(width: 66, alignment: .trailing)
+                        if hasMenu {
+                            runMenu(run)
+                        }
                     }
                     if let detail = runDetail?(run) {
                         Text(detail)
@@ -218,6 +229,31 @@ struct DriverRunsTable: View {
                     Color.egHairline.frame(height: 1)
                 }
             }
+        }
+    }
+
+    private func runMenu(_ run: Run) -> some View {
+        Menu {
+            if let onDelete, canDelete?(run) ?? true {
+                Button(role: .destructive) {
+                    onDelete(run)
+                } label: {
+                    Label("Delete Run", systemImage: "trash")
+                }
+            }
+            if let onReport {
+                Button {
+                    onReport(run)
+                } label: {
+                    Label("Report Run", systemImage: "flag")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(Color.egGray)
+                .frame(width: 30, height: 28, alignment: .trailing)
+                .contentShape(Rectangle())
         }
     }
 

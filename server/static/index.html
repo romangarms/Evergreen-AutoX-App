@@ -152,11 +152,18 @@
           <label class="field">name <input id="course-name" class="w-lg" required></label>
           <label class="field">distance mi <input id="course-dist" type="number" step="any" class="w-sm"></label>
           <label class="field">legacy dist mi <input id="course-legacy-dist" type="number" step="any" class="w-sm"></label>
+          <label class="field">description <input id="course-desc" class="w-lg"></label>
           <div class="actions">
             <button class="btn primary" type="submit" id="course-save-btn">Save</button>
             <button class="btn" type="button" id="course-cancel-btn">Cancel</button>
           </div>
         </form>
+      </div>
+      <div class="panel">
+        <h2>Reports</h2>
+        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Flags sent from the app. Admin login required.</p>
+        <button class="btn" id="reports-load-btn">Load reports</button>
+        <ul id="report-list" class="picklist" style="margin-top:0.5rem"></ul>
       </div>
       <div class="panel">
         <h2>TrackAddict import</h2>
@@ -377,7 +384,7 @@ const showJSON = data => { $("lb-json").textContent = JSON.stringify(data, null,
 async function loadCourses(selectId) {
   const courses = await api("/api/leaderboard/courses");
   fillList($("course-list"), courses,
-    c => `${esc(c.name)}<br><span class="sub">#${c.id} · ${c.distance_miles ?? "?"} mi</span>`,
+    c => `${esc(c.name)}<br><span class="sub">#${c.id} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
@@ -406,6 +413,8 @@ async function refreshLeaderboard() {
   const meta = [`${data.runs.length} runs`];
   if (data.course.distance_miles) meta.push(`${data.course.distance_miles} mi`);
   if (data.course.legacy_distance_miles) meta.push(`legacy ${data.course.legacy_distance_miles} mi`);
+  if (data.course.created_by) meta.push(`by ${data.course.created_by}`);
+  if (data.course.description) meta.push(data.course.description);
   $("lb-course-meta").textContent = meta.join(" · ");
   renderRuns(data.runs);
 }
@@ -504,6 +513,7 @@ $("course-new-btn").onclick = () => {
   $("course-name").value = "";
   $("course-dist").value = "";
   $("course-legacy-dist").value = "";
+  $("course-desc").value = "";
   $("course-name").focus();
 };
 $("course-edit-btn").onclick = () => {
@@ -513,6 +523,7 @@ $("course-edit-btn").onclick = () => {
   $("course-name").value = currentCourse.name;
   $("course-dist").value = currentCourse.distance_miles ?? "";
   $("course-legacy-dist").value = currentCourse.legacy_distance_miles ?? "";
+  $("course-desc").value = currentCourse.description ?? "";
   $("course-name").focus();
 };
 $("course-cancel-btn").onclick = () => { $("course-form").style.display = "none"; };
@@ -523,6 +534,7 @@ $("course-form").onsubmit = async e => {
     name: $("course-name").value,
     distance_miles: $("course-dist").value ? Number($("course-dist").value) : null,
     legacy_distance_miles: $("course-legacy-dist").value ? Number($("course-legacy-dist").value) : null,
+    description: $("course-desc").value || null,
   };
   const result = editingCourse
     ? await apiJSON(`/api/leaderboard/courses/${currentCourse.id}`, "PATCH", body)
@@ -543,6 +555,32 @@ armConfirm($("course-del-btn"), async () => {
     "<tr><td colspan='11' class='muted'>Select a course on the left.</td></tr>";
   loadCourses();
 });
+
+async function loadReports() {
+  const reports = await api("/api/leaderboard/reports");
+  const ul = $("report-list");
+  ul.innerHTML = "";
+  if (!reports.length) ul.innerHTML = "<li class='muted'>(no reports)</li>";
+  for (const r of reports) {
+    const target = r.target
+      ? (r.target_type === "course"
+          ? `board “${esc(r.target.name)}”`
+          : `run ${esc(r.target.driver)} ${r.target.time} on “${esc(r.target.course_name)}”`)
+      : `${r.target_type} #${r.target_id} (deleted)`;
+    const li = document.createElement("li");
+    li.innerHTML = `${target}<br><span class="sub">${esc(r.reason ?? "")} · ${esc(r.created_at)}</span>
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button></div>`;
+    const courseId = r.target ? (r.target_type === "course" ? r.target.id : r.target.course_id) : null;
+    li.querySelector("[data-act=open]").onclick = e => { e.stopPropagation(); if (courseId != null) loadCourses(courseId); };
+    li.querySelector("[data-act=dismiss]").onclick = async e => {
+      e.stopPropagation();
+      await api(`/api/leaderboard/reports/${r.id}`, { method: "DELETE" });
+      loadReports();
+    };
+    ul.appendChild(li);
+  }
+}
+$("reports-load-btn").onclick = loadReports;
 
 $("ta-parse-btn").onclick = async () => {
   const file = $("ta-file").files[0];

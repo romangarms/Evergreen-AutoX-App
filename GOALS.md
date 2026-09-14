@@ -8,10 +8,12 @@ were not on the original wishlist and are up for debate.
 
 - **App** (iOS 26, TestFlight 1.1): Live / Friends / Events / Setup tabs. Pins, nicknames, and the ME car
   are stored per event in `UserDefaults` on the device only. Data refreshes on pull-to-refresh; there is
-  no background polling. The custom leaderboard is read-only in the app.
+  no background polling. Community leaderboards can be created, posted to (by hand or from a TrackAddict
+  CSV), reported, and hidden from the app; creators edit/delete their own boards.
 - **Server** (FastAPI, Docker on https://autox.romangarms.com): Speedhive proxy, GGLC scraper, SQLite
-  leaderboard with a single shared admin password (HTTP Basic), TrackAddict CSV parser, hourly DB backups.
-  No accounts, no tests, no schema migrations beyond `CREATE TABLE IF NOT EXISTS`.
+  leaderboard with per-device ownership tokens plus an admin password (HTTP Basic), report queue,
+  TrackAddict CSV parser, hourly DB backups. No accounts beyond the anonymous device token, no tests,
+  additive column migrations only.
 - **Design concept**: `Evergreen AutoX Timing.html` includes mockups for the Watch app and the CarPlay
   Now Playing card, referenced below.
 
@@ -96,33 +98,29 @@ to (2) once accounts exist.
 
 ### TrackAddict upload to the leaderboard
 
-Today `/api/trackaddict/parse` exists but the app has no way to use it.
+Done (Sept 2026): the Post a Time sheet imports a CSV through the Files picker, lists the parsed laps, and
+fills in the time and top speed from the chosen lap with `source = 'trackaddict'`. Still open:
 
-- Accept a TrackAddict CSV via the share sheet (`.csv` UTI / Files picker) and from the TrackAddict app's
-  export flow.
-- Show the parsed laps (lap 0 is the pre-start segment, not a run) and let the user pick which laps to submit,
-  which course they belong to, and fill in vehicle/hp/conditions with sensible defaults from their last run.
-- Submit as leaderboard runs with `source = 'trackaddict'`, attributed to the uploader.
+- Accept the CSV straight from the share sheet / TrackAddict's export flow, not only the Files picker.
 - **(proposed)** Keep the raw CSV on the server next to the run so admins can verify a claimed time and so
   a future feature can render the GPS trace / speed graph.
 - **(proposed)** Uploads land in a pending state until an admin approves, or go live immediately with a
   visible "unverified" tag. Decide which; the first is safer, the second is more fun.
 
-Depends on: [Identity](#identity-and-accounts-prerequisite) for attribution, and on the leaderboard write
-API accepting per-user tokens rather than the shared admin password.
-
 ### Custom leaderboards for everyone
 
-Let any user create a course/leaderboard that everyone can see, not just the admin-seeded HWY 9 board.
+Done (Sept 2026) on top of anonymous device tokens rather than accounts: create a board from the Events
+tab (name, distance, description, creator name), anyone posts runs, the creator edits/deletes the board and
+any run on it, and every board or run can be reported (admin sees the queue in the dev console) or hidden
+locally. Still open:
 
-- Create a course from the app: name, distance, optional description and location.
-- Anyone can submit runs (manual or TrackAddict); the creator can edit/delete runs on their board.
-- Boards are public by default; **(proposed)** optional unlisted boards shared by link for a private group.
+- Move ownership onto real accounts once [Identity](#identity-and-accounts-prerequisite) exists, so a
+  board survives losing the phone.
+- The seeded HWY 9 boards are still admin-owned developer content; recreate them under a user's account
+  or keep them clearly labelled before App Store review.
+- **(proposed)** Optional unlisted boards shared by link for a private group.
 - **(proposed)** Vehicle classes / filters (stock vs. modified, hp brackets) so one board can host mixed cars.
 - **(proposed)** Per-driver detail in the app: all their runs on the course, PB progression over time.
-
-Depends on: [Identity](#identity-and-accounts-prerequisite), ownership on `courses`, and
-[Admin](#admin-features) for cleanup.
 
 ### Other app goals (proposed)
 
@@ -207,7 +205,7 @@ Nicknames, pins, and the ME car sync across everyone's devices.
 2. **Identity** (Sign in with Apple, users table, tokens) on the server. Nothing shared ships without it.
 3. **Nickname sync** and **per-user admin roles**, since they're the smallest features on top of identity and
    prove the model.
-4. **TrackAddict upload** and **custom leaderboards**, sharing the same upload + ownership work.
+4. ~~**TrackAddict upload** and **custom leaderboards**~~ shipped on device tokens; revisit once identity lands.
 5. **CarPlay Now Playing** with the background audio session, and **local notifications** riding on it.
 6. **Apple Watch** app, fed from the phone.
 7. **APNs push** and server-side Speedhive polling.

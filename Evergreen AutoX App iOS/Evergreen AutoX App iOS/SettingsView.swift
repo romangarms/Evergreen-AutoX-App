@@ -8,6 +8,27 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("YOUR NAME")
+                    Text("Filled in as the driver when you post a time and shown as the creator of leaderboards you make.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.egGrayDark)
+                    TextField("Name or nickname", text: $model.posterName)
+                        .font(.system(size: 12))
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 8)
+                        .background(Color.egCard)
+                        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                    if model.hiddenCourseCount > 0 {
+                        Button(model.hiddenCourseCount == 1 ? "UNHIDE 1 LEADERBOARD" : "UNHIDE \(model.hiddenCourseCount) LEADERBOARDS") {
+                            model.unhideAllCourses()
+                        }
+                        .buttonStyle(EGButtonStyle())
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
                     sectionHeader("THIS IS ME")
                     Text("Drives the ME tag and the gaps on the Friends tab.")
                         .font(.system(size: 11))

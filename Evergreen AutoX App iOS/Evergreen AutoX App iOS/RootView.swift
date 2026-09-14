@@ -38,7 +38,7 @@ struct RootView: View {
             return ("EVENT", "Pick a session", nil, false)
         case .leaderboard(let courseID):
             let course = model.leaderboardCourses.first { $0.id == courseID }
-            return ("LEADERBOARD", course?.name ?? "TrackAddict", nil, false)
+            return ("LEADERBOARD", course?.name ?? "Leaderboard", course?.createdBy.map { "Created by \($0)" }, false)
         case .leaderboardDriver(let courseID, let position):
             let course = model.leaderboardCourses.first { $0.id == courseID }
             let driver = model.leaderboardDriver(at: position)
