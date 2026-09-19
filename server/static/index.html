@@ -158,6 +158,14 @@
             <button class="btn" type="button" id="course-cancel-btn">Cancel</button>
           </div>
         </form>
+        <form id="owner-form" style="display:none; margin-top:0.6rem" class="form-grid">
+          <label class="field">owner device ID (from the app: Setup → Dev mode → Copy device ID; empty = no owner)
+            <input id="owner-token" class="w-lg" autocomplete="off" spellcheck="false"></label>
+          <div class="actions">
+            <button class="btn primary" type="submit">Set owner</button>
+            <button class="btn" type="button" id="owner-cancel-btn">Cancel</button>
+          </div>
+        </form>
       </div>
       <div class="panel">
         <h2>Reports</h2>
@@ -182,6 +190,7 @@
           <div class="row" id="lb-course-actions" style="display:none">
             <span class="muted" id="lb-course-meta"></span>
             <button class="btn" id="course-edit-btn">Edit course</button>
+            <button class="btn" id="course-owner-btn">Set owner</button>
             <button class="btn danger" id="course-del-btn">Delete course</button>
           </div>
         </div>
@@ -414,6 +423,7 @@ async function refreshLeaderboard() {
   if (data.course.distance_miles) meta.push(`${data.course.distance_miles} mi`);
   if (data.course.legacy_distance_miles) meta.push(`legacy ${data.course.legacy_distance_miles} mi`);
   if (data.course.created_by) meta.push(`by ${data.course.created_by}`);
+  meta.push(data.course.has_owner ? "owned by a device" : "no owner");
   if (data.course.description) meta.push(data.course.description);
   $("lb-course-meta").textContent = meta.join(" · ");
   renderRuns(data.runs);
@@ -542,6 +552,23 @@ $("course-form").onsubmit = async e => {
   showJSON(result);
   $("course-form").style.display = "none";
   loadCourses(result.id);
+};
+
+$("course-owner-btn").onclick = () => {
+  if (!currentCourse) return;
+  $("owner-form").style.display = "";
+  $("owner-token").value = "";
+  $("owner-token").focus();
+};
+$("owner-cancel-btn").onclick = () => { $("owner-form").style.display = "none"; };
+
+$("owner-form").onsubmit = async e => {
+  e.preventDefault();
+  if (!currentCourse) return;
+  const token = $("owner-token").value.trim();
+  await apiJSON(`/api/leaderboard/courses/${currentCourse.id}/owner`, "PUT", { device_token: token || null });
+  $("owner-form").style.display = "none";
+  refreshLeaderboard();
 };
 
 armConfirm($("course-del-btn"), async () => {

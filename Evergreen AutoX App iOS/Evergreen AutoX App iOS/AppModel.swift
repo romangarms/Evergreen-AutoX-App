@@ -234,6 +234,29 @@ final class AppModel {
         events.contains { $0.source == .speedhive && Self.isAutoX($0) }
     }
 
+    // `events` is newest-first, so each `first` is that source's latest.
+    var latestAutoXEventID: Int? {
+        events.first { $0.source != .leaderboard && Self.isAutoX($0) }?.id
+    }
+
+    // The org's newest Speedhive event is usually an oval race night, which
+    // means nothing to an autocrosser opening the app for the first time.
+    private var defaultEventID: Int? {
+        (events.first { $0.source == .gglc }
+            ?? events.first { $0.source == .speedhive && Self.isAutoX($0) }
+            ?? events.first { $0.source != .leaderboard })?.id
+    }
+
+    // An oval race night hidden by the AutoX-only filter isn't reopened on
+    // launch, even if it was the last event viewed.
+    private var restorableEventID: Int? {
+        guard let saved = defaults.object(forKey: "selectedEventID") as? Int,
+              let event = events.first(where: { $0.id == saved }),
+              !speedhiveAutoXOnly || Self.isAutoX(event)
+        else { return nil }
+        return event.id
+    }
+
     var recentEvents: [SHEvent] { recentEventIDs.compactMap { id in events.first { $0.id == id } } }
 
     static func eventMonth(_ event: SHEvent) -> String? {
@@ -416,12 +439,11 @@ final class AppModel {
                 .sorted { ($0.startDate ?? "") > ($1.startDate ?? "") }
                 + leaderboardEvents
             orgName = (try? await orgTask)?.name
-            let saved = defaults.object(forKey: "selectedEventID") as? Int
-            // Leaderboards have no sessions, so they can't be the Live event.
-            let eventID = events.first { $0.id == saved }?.id
-                ?? events.first { $0.source != .leaderboard }?.id
-            if let eventID {
-                await selectEvent(eventID)
+            // Only an event the user opened is remembered; until then every
+            // launch follows the newest one. A reload keeps what's on screen.
+            let current = events.first { $0.id == selectedEventID }?.id
+            if let eventID = current ?? restorableEventID ?? defaultEventID {
+                await selectEvent(eventID, remember: false)
             } else {
                 isLoading = false
             }
@@ -607,16 +629,23 @@ final class AppModel {
         recentEventIDs = Array(ids.prefix(6))
     }
 
-    func selectEvent(_ eventID: Int) async {
+    // Loads overlap when the user taps around faster than the network; after
+    // every await, a load whose event or session is no longer the selected
+    // one stops without touching state.
+    func selectEvent(_ eventID: Int, remember: Bool = true) async {
         selectedEventID = eventID
-        defaults.set(eventID, forKey: "selectedEventID")
-        recordRecentEvent(eventID)
+        if remember {
+            defaults.set(eventID, forKey: "selectedEventID")
+            recordRecentEvent(eventID)
+        }
         isLoading = true
         errorMessage = nil
         do {
-            sessions = eventID < 0
+            let fetched = eventID < 0
                 ? Self.gglcSessions(eventID: eventID)
                 : try await client.sessions(eventID: eventID)
+            guard selectedEventID == eventID else { return }
+            sessions = fetched
             let saved = sessionChoice[String(eventID)]
             let sessionID = sessions.first { $0.id == saved }?.id ?? Self.latestSession(sessions)?.id
             if let sessionID {
@@ -626,6 +655,7 @@ final class AppModel {
                 isLoading = false
             }
         } catch {
+            guard selectedEventID == eventID else { return }
             errorMessage = error.localizedDescription
             isLoading = false
         }
@@ -644,19 +674,23 @@ final class AppModel {
         isLoading = true
         errorMessage = nil
         do {
+            let loaded: [Driver]
             if sessionID < 0 {
                 let event = try await client.gglcEvent(date: Self.gglcDate(eventID: sessionID))
-                drivers = Self.gglcDrivers(event)
+                loaded = Self.gglcDrivers(event)
             } else {
                 async let resultsTask = client.results(sessionID: sessionID)
                 async let lapsTask = client.laps(sessionID: sessionID)
                 let (results, lapsRows) = try await (resultsTask, lapsTask)
                 let lapsByPosition = Dictionary(lapsRows.compactMap { row in row.position.map { ($0, row.laps ?? []) } }) { first, _ in first }
-                drivers = results
+                loaded = results
                     .map { Driver(result: $0, laps: lapsByPosition[$0.position ?? -1] ?? []) }
                     .sorted { $0.position < $1.position }
             }
+            guard selectedSessionID == sessionID else { return }
+            drivers = loaded
         } catch {
+            guard selectedSessionID == sessionID else { return }
             errorMessage = error.localizedDescription
         }
         isLoading = false

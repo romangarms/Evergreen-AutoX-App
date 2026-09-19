@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @State private var copiedDeviceID = false
 
     var body: some View {
         @Bindable var model = model
@@ -110,6 +111,20 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(EGChipButtonStyle())
+                    if model.devMode {
+                        Text("The device ID is what makes leaderboards and runs yours. Anyone who has it can edit them, so only paste it into the server console.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.egGrayDark)
+                        Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {
+                            UIPasteboard.general.string = DeviceIdentity.token
+                            copiedDeviceID = true
+                            Task {
+                                try? await Task.sleep(for: .seconds(2))
+                                copiedDeviceID = false
+                            }
+                        }
+                        .buttonStyle(EGButtonStyle())
+                    }
                 }
             }
             .padding(.horizontal, 16)

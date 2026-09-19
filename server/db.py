@@ -109,6 +109,7 @@ def adjusted_seconds(run: sqlite3.Row | dict, course: sqlite3.Row | dict) -> flo
 def course_to_dict(course: sqlite3.Row, viewer_id: str | None = None) -> dict:
     out = dict(course)
     owner = out.pop("owner_id")
+    out["has_owner"] = owner is not None
     out["is_owner"] = owner is not None and owner == viewer_id
     return out
 

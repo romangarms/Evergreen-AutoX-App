@@ -95,7 +95,7 @@ Speedhive-backed:
 
 GGLC (scraped from gglotus.org result pages):
 
-- `GET /api/gglc/events` — list of GGLC autocross events
+- `GET /api/gglc/events` — list of GGLC autocross events that have results (GGLC sometimes publishes title-only pages; those are skipped unless the event is today)
 - `GET /api/gglc/events/{event_date}` — full results for one event (`YYYY-MM-DD` or `YYYYMMDD`)
 
 Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device token or admin login, see [Leaderboard auth](#leaderboard-auth)). Responses carry `is_owner` for the caller and never expose owner tokens:
@@ -104,6 +104,7 @@ Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device t
 - `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`, `description`, `created_by`)
 - `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
 - `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (owner or admin; deleting removes its runs)
+- `PUT /api/leaderboard/courses/{course_id}/owner` — admin only: hand a course to a device (`device_token`, or `null` for no owner)
 - `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`)
 - `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
 - `POST /api/leaderboard/reports` — flag a course or run (`target_type` of `course`/`run`, `target_id`, `reason`)

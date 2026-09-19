@@ -230,6 +230,10 @@ class CourseUpdate(BaseModel):
     description: LongStr = None
 
 
+class CourseOwnerIn(BaseModel):
+    device_token: str | None
+
+
 class RunIn(BaseModel):
     driver: NameStr
     time: float | str
@@ -401,6 +405,19 @@ def update_course(course_id: int, update: CourseUpdate, actor: WriterDep):
                 detail=f"A leaderboard named {fields['name']!r} already exists",
             ) from exc
         return db.course_to_dict(_get_course(conn, course_id), actor.device_id)
+
+
+# Hands a board to a device (or back to nobody with a null token); the only way
+# an admin-created board gets an owner.
+@app.put("/api/leaderboard/courses/{course_id}/owner")
+def set_course_owner(course_id: int, owner: CourseOwnerIn, _: AdminDep):
+    token = owner.device_token.strip() if owner.device_token else None
+    if token is not None and not DEVICE_TOKEN.match(token):
+        raise HTTPException(status_code=400, detail="Malformed device token")
+    with db.session() as conn:
+        _get_course(conn, course_id)
+        conn.execute("UPDATE courses SET owner_id = ? WHERE id = ?", (token, course_id))
+        return db.course_to_dict(_get_course(conn, course_id))
 
 
 @app.delete("/api/leaderboard/courses/{course_id}")

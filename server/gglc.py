@@ -155,8 +155,16 @@ def _parse_table(table: list) -> dict | None:
 _event_cache: dict[date, dict] = {}
 
 
+# GGLC sometimes publishes a page with a title and no result tables.
+def has_results(event: dict) -> bool:
+    return any(
+        driver["runs"] for klass in event["classes"] for driver in klass["drivers"]
+    )
+
+
 def fetch_event(day: date) -> dict | None:
-    # Past events never change, so cache them; today's page updates all day.
+    # Past events never change, so cache them; today's page updates all day,
+    # and a page without results may still be filled in later.
     cached = _event_cache.get(day)
     if cached is not None:
         return cached
@@ -180,7 +188,7 @@ def fetch_event(day: date) -> dict | None:
             parsed for t in parser.tables if (parsed := _parse_table(t)) is not None
         ],
     }
-    if day < today():
+    if day < today() and has_results(event):
         _event_cache[day] = event
     return event
 
@@ -202,6 +210,18 @@ def _candidates(year: int) -> list[date]:
     return days
 
 
+def _is_listable(day: date) -> bool:
+    # Today's event is listed before its first run so it can be followed live.
+    if day >= today():
+        return True
+    # A page that can't be read right now stays listed; opening it reports why.
+    try:
+        event = fetch_event(day)
+    except httpx.HTTPError:
+        return True
+    return event is not None and has_results(event)
+
+
 def list_events(year: int) -> list[dict]:
     with _probe_lock:
         to_probe = [
@@ -217,8 +237,11 @@ def list_events(year: int) -> list[dict]:
                     _found.add(day)
                 elif day < today():
                     _missing.add(day)
-        return [
-            {"date": d.isoformat(), "url": event_url(d)}
-            for d in sorted(_found, reverse=True)
-            if d.year == year
-        ]
+        days = sorted((d for d in _found if d.year == year), reverse=True)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        listable = pool.map(_is_listable, days)
+    return [
+        {"date": d.isoformat(), "url": event_url(d)}
+        for d, ok in zip(days, listable)
+        if ok
+    ]

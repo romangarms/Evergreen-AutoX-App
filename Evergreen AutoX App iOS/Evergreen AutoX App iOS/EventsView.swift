@@ -256,7 +256,7 @@ struct EventsView: View {
                 if selected {
                     EGTag(text: "SELECTED", size: 9)
                         .padding(.trailing, 8)
-                } else if event.source != .leaderboard, event.id == model.events.first?.id {
+                } else if event.id == model.latestAutoXEventID {
                     EGTag(text: "LATEST", background: .egInk, foreground: .egBg, size: 9)
                         .padding(.trailing, 8)
                 }
