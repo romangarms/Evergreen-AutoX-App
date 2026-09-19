@@ -25,10 +25,9 @@ final class AppModel {
         }
     }
 
-    enum Screen: Equatable {
+    enum Screen: Hashable {
         case driver(Int)
         case compare(Int, Int)
-        case sessions(Int)
         case leaderboard(Int)
         case leaderboardDriver(Int, Int)
     }
@@ -74,14 +73,12 @@ final class AppModel {
     var leaderboardDetail: LBCourseDetail?
     var leaderboardError: String?
     var sessions: [SHSession] = []
-    var viewedSessions: [SHSession] = []
     var drivers: [Driver] = []
     var selectedEventID: Int?
     var selectedSessionID: Int?
 
     var isLoading = false
     var errorMessage: String?
-    var viewedSessionsError: String?
 
     var compareSelection: [String] = []
     var isRenaming = false
@@ -102,7 +99,8 @@ final class AppModel {
     var orgIDString: String {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
     }
-    // Default driver/creator name on anything posted to a leaderboard.
+    // The name last posted with, offered as the default next time. Nothing
+    // else edits it, so every post has to refresh it or a typo would stick.
     var posterName: String {
         didSet { defaults.set(posterName, forKey: "posterName") }
     }
@@ -156,11 +154,11 @@ final class AppModel {
             meNumberByEvent[key] = newValue
         }
     }
+    private var mePromptDismissedEvents: [String] {
+        didSet { defaults.set(mePromptDismissedEvents, forKey: "mePromptDismissedEvents") }
+    }
     private var sessionChoice: [String: Int] {
         didSet { defaults.set(sessionChoice, forKey: "sessionChoice") }
-    }
-    private var recentEventIDs: [Int] {
-        didSet { defaults.set(recentEventIDs, forKey: "recentEventIDs") }
     }
 
     init() {
@@ -174,8 +172,8 @@ final class AppModel {
         pinsByEvent = (defaults.dictionary(forKey: "pinsByEvent") as? [String: [String]]) ?? [:]
         nicknamesByEvent = (defaults.dictionary(forKey: "nicknamesByEvent") as? [String: [String: String]]) ?? [:]
         meNumberByEvent = (defaults.dictionary(forKey: "meNumberByEvent") as? [String: String]) ?? [:]
+        mePromptDismissedEvents = defaults.stringArray(forKey: "mePromptDismissedEvents") ?? []
         sessionChoice = (defaults.dictionary(forKey: "sessionChoice") as? [String: Int]) ?? [:]
-        recentEventIDs = (defaults.array(forKey: "recentEventIDs") as? [Int]) ?? []
         migrateGlobalPersonalization()
     }
 
@@ -202,25 +200,36 @@ final class AppModel {
         )
     }
 
+    // Like the custom server URL, a custom org only applies in dev mode, so
+    // nobody is left on an org they have no visible way to change.
     var orgID: Int {
-        Int(orgIDString.trimmingCharacters(in: .whitespaces)) ?? Self.defaultOrgID
+        guard devMode else { return Self.defaultOrgID }
+        return Int(orgIDString.trimmingCharacters(in: .whitespaces)) ?? Self.defaultOrgID
     }
 
-    var leaderboardDrivers: [Driver] {
+    var leaderboardEntries: [LBEntry] {
         guard let detail = leaderboardDetail else { return [] }
-        return Dictionary(grouping: detail.runs, by: \.driver)
-            .map { name, runs in
-                (name: name, runs: runs, best: runs.map(\.adjustedSeconds).min() ?? .infinity)
+        return Dictionary(grouping: detail.runs, by: LBEntry.groupKey)
+            .values
+            .compactMap { runs in
+                runs.min { $0.adjustedSeconds < $1.adjustedSeconds }.map { (best: $0, runs: runs) }
             }
-            .sorted { ($0.best, $0.name) < ($1.best, $1.name) }
+            .sorted {
+                ($0.best.adjustedSeconds, $0.best.driver, $0.best.vehicle ?? "")
+                    < ($1.best.adjustedSeconds, $1.best.driver, $1.best.vehicle ?? "")
+            }
             .enumerated()
-            .map { index, entry in
-                Driver(rank: index + 1, name: entry.name, leaderboardRuns: entry.runs)
+            .map { index, group in
+                LBEntry(rank: index + 1, best: group.best, runs: group.runs)
             }
+    }
+
+    func leaderboardEntry(at position: Int) -> LBEntry? {
+        leaderboardEntries.first { $0.id == position }
     }
 
     func leaderboardDriver(at position: Int) -> Driver? {
-        leaderboardDrivers.first { $0.position == position }
+        leaderboardEntry(at: position)?.driver
     }
 
     var selectedEvent: SHEvent? { events.first { $0.id == selectedEventID } }
@@ -257,8 +266,6 @@ final class AppModel {
         return event.id
     }
 
-    var recentEvents: [SHEvent] { recentEventIDs.compactMap { id in events.first { $0.id == id } } }
-
     static func eventMonth(_ event: SHEvent) -> String? {
         event.startDate.flatMap { $0.count >= 7 ? String($0.prefix(7)) : nil }
     }
@@ -272,6 +279,18 @@ final class AppModel {
     }
     var selectedSession: SHSession? { sessions.first { $0.id == selectedSessionID } }
     var me: Driver? { meNumber.flatMap(driver(number:)) }
+
+    // Car numbers are per event, so the prompt comes back for each new event
+    // until it's answered or dismissed there.
+    var showsMePrompt: Bool {
+        guard let key = eventKey, !drivers.isEmpty else { return false }
+        return meNumber == nil && !mePromptDismissedEvents.contains(key)
+    }
+
+    func dismissMePrompt() {
+        guard let key = eventKey, !mePromptDismissedEvents.contains(key) else { return }
+        mePromptDismissedEvents.append(key)
+    }
     var friends: [Driver] { drivers.filter { pins.contains($0.startNumber) } }
 
     func driver(at position: Int) -> Driver? {
@@ -342,9 +361,7 @@ final class AppModel {
     func open(screen: Screen) {
         isRenaming = false
         self.screen = screen
-        if case .sessions(let eventID) = screen {
-            loadViewedSessions(eventID: eventID)
-        } else if case .leaderboard(let courseID) = screen {
+        if case .leaderboard(let courseID) = screen {
             loadLeaderboard(courseID: courseID)
         }
     }
@@ -417,6 +434,7 @@ final class AppModel {
         pinsByEvent = [:]
         nicknamesByEvent = [:]
         meNumberByEvent = [:]
+        mePromptDismissedEvents = []
         compareSelection = []
     }
 
@@ -623,12 +641,6 @@ final class AppModel {
         }
     }
 
-    private func recordRecentEvent(_ eventID: Int) {
-        var ids = recentEventIDs.filter { $0 != eventID }
-        ids.insert(eventID, at: 0)
-        recentEventIDs = Array(ids.prefix(6))
-    }
-
     // Loads overlap when the user taps around faster than the network; after
     // every await, a load whose event or session is no longer the selected
     // one stops without touching state.
@@ -636,7 +648,6 @@ final class AppModel {
         selectedEventID = eventID
         if remember {
             defaults.set(eventID, forKey: "selectedEventID")
-            recordRecentEvent(eventID)
         }
         isLoading = true
         errorMessage = nil
@@ -696,38 +707,8 @@ final class AppModel {
         isLoading = false
     }
 
-    private func loadViewedSessions(eventID: Int) {
-        viewedSessionsError = nil
-        if eventID == selectedEventID {
-            viewedSessions = sessions
-            return
-        }
-        if eventID < 0 {
-            viewedSessions = Self.gglcSessions(eventID: eventID)
-            return
-        }
-        viewedSessions = []
-        Task {
-            do {
-                let fetched = try await client.sessions(eventID: eventID)
-                guard case .some(.sessions(eventID)) = screen else { return }
-                viewedSessions = fetched
-            } catch {
-                guard case .some(.sessions(eventID)) = screen else { return }
-                viewedSessionsError = error.localizedDescription
-            }
-        }
-    }
-
-    func pickSession(eventID: Int, sessionID: Int) {
-        if eventID == selectedEventID, sessionID == selectedSessionID, !drivers.isEmpty {
-            showLive()
-            return
-        }
-        selectedEventID = eventID
-        defaults.set(eventID, forKey: "selectedEventID")
-        recordRecentEvent(eventID)
-        sessions = viewedSessions
+    func pickSession(_ sessionID: Int) {
+        guard sessionID != selectedSessionID else { return }
         switchToLive()
         isLoading = true
         Task { await selectSession(sessionID) }

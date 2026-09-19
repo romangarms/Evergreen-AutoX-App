@@ -6,10 +6,10 @@ were not on the original wishlist and are up for debate.
 
 ## Where things stand (Sept 2026)
 
-- **App** (iOS 26, TestFlight 1.1): Live / Friends / Events / Setup tabs. Pins, nicknames, and the ME car
+- **App** (iOS 26, TestFlight 1.2): Live / Friends / Events / Setup tabs. Pins, nicknames, and the ME car
   are stored per event in `UserDefaults` on the device only. Data refreshes on pull-to-refresh; there is
-  no background polling. Community leaderboards can be created, posted to (by hand or from a TrackAddict
-  CSV), reported, and hidden from the app; creators edit/delete their own boards.
+  no background polling. Community leaderboards can be created, posted to (from a TrackAddict CSV
+  only, so times come from a log), reported, and hidden from the app; creators edit/delete their own boards.
 - **Server** (FastAPI, Docker on https://autox.romangarms.com): Speedhive proxy, GGLC scraper, SQLite
   leaderboard with per-device ownership tokens plus an admin password (HTTP Basic), report queue,
   TrackAddict CSV parser, hourly DB backups. No accounts beyond the anonymous device token, no tests,

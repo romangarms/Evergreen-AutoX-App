@@ -4,6 +4,7 @@ struct LiveView: View {
     @Environment(AppModel.self) private var model
 
     @State private var scrollPosition: ScrollPosition
+    @State private var isPickingMe = false
 
     init(initialOffset: CGFloat) {
         _scrollPosition = State(initialValue: ScrollPosition(y: initialOffset))
@@ -13,24 +14,77 @@ struct LiveView: View {
         if model.drivers.isEmpty {
             StatusView()
         } else {
-            ScrollView {
-                VStack(spacing: 0) {
-                    ResultsColumnHeader()
-                    ForEach(model.drivers) { driver in
-                        ResultRowView(driver: driver)
+            VStack(spacing: 0) {
+                if isPickingMe || model.showsMePrompt {
+                    mePrompt
+                }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ResultsColumnHeader()
+                        ForEach(model.drivers) { driver in
+                            ResultRowView(driver: driver, onTap: isPickingMe ? { pickMe(driver) } : nil)
+                        }
                     }
                 }
-            }
-            .scrollPosition($scrollPosition)
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
-                if offset >= 0 {
-                    model.liveScrollOffset = offset
+                .scrollPosition($scrollPosition)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
+                    if offset >= 0 {
+                        model.liveScrollOffset = offset
+                    }
                 }
+                .refreshable { await model.loadSessionData() }
             }
-            .refreshable { await model.loadSessionData() }
         }
     }
 
+    private func pickMe(_ driver: Driver) {
+        model.meNumber = driver.startNumber
+        isPickingMe = false
+    }
+
+    // Sits above the scroll view so the instruction stays visible while
+    // scrolling a long field to find yourself.
+    private var mePrompt: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(isPickingMe ? "Tap yourself in the list" : "Which driver is you?")
+                    .font(.system(size: 12.5, weight: .heavy))
+                    .foregroundStyle(Color.egInk)
+                Text(isPickingMe ? "Change it later from the ⋯ menu on any driver." : "Get a ME tag and gaps to your friends.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.egGrayDark)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if isPickingMe {
+                Button("CANCEL") {
+                    isPickingMe = false
+                }
+                .buttonStyle(EGChipButtonStyle())
+            } else {
+                Button("FIND ME") {
+                    isPickingMe = true
+                }
+                .buttonStyle(EGChipButtonStyle(tint: .egRed))
+                Button {
+                    model.dismissMePrompt()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(Color.egGray)
+                        .frame(width: 28, height: 32)
+                        .contentShape(Rectangle().inset(by: -6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, isPickingMe ? 16 : 8)
+        .padding(.vertical, 8)
+        .background(isPickingMe ? Color.egPinnedBg : Color.egMeBg)
+        .overlay(alignment: .bottom) {
+            Color.egDivider.frame(height: 1)
+        }
+    }
 }
 
 struct ResultsColumnHeader: View {

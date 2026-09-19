@@ -18,8 +18,8 @@ Four tabs:
 
 - **Live** — the leaderboard for the selected session: position, car number, best time, and run count for every entry. Your own car gets a **ME** tag and highlight, and you can star cars to keep an eye on them. Pull to refresh.
 - **Friends** — pin the cars you care about, see everyone's gap to your best time, and pick any two for a head-to-head: best/average/spread stats, a times-over-the-day chart, and a run-by-run gap breakdown.
-- **Events** — browse and search an organization's events, then drill into sessions and individual drivers. The **Leaderboards** section holds community leaderboards: anyone can create one from the app, post times to any board (by hand or from a TrackAddict CSV export), and report or hide a board or run. Creators can edit and delete their own boards and any run on them.
-- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, switch Speedhive organizations, and point the app at your server.
+- **Events** — browse and search an organization's events, then drill into sessions and individual drivers. The **Leaderboards** section holds community leaderboards: anyone can create one from the app, post times to any board from a TrackAddict CSV export (the time and top speed come from the log, not from typing), and report or hide a board or run. Creators can edit and delete their own boards and any run on them.
+- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, and turn on dev mode, which unlocks pointing the app at your own server and switching Speedhive organizations (Events → ⋯ menu).
 
 ## Running the server
 

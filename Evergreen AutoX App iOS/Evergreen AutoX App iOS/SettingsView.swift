@@ -8,20 +8,9 @@ struct SettingsView: View {
         @Bindable var model = model
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeader("YOUR NAME")
-                    Text("Filled in as the driver when you post a time and shown as the creator of leaderboards you make.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.egGrayDark)
-                    TextField("Name or nickname", text: $model.posterName)
-                        .font(.system(size: 12))
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 8)
-                        .background(Color.egCard)
-                        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
-                    if model.hiddenCourseCount > 0 {
+                if model.hiddenCourseCount > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionHeader("LEADERBOARDS")
                         Button(model.hiddenCourseCount == 1 ? "UNHIDE 1 LEADERBOARD" : "UNHIDE \(model.hiddenCourseCount) LEADERBOARDS") {
                             model.unhideAllCourses()
                         }
@@ -87,11 +76,10 @@ struct SettingsView: View {
                             .padding(.vertical, 8)
                             .background(Color.egCard)
                             .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                            .onSubmit {
+                                Task { await model.loadEvents() }
+                            }
                     }
-                    Button("RECONNECT") {
-                        Task { await model.loadEvents() }
-                    }
-                    .buttonStyle(EGButtonStyle(kind: .primary))
                 }
 
                 Button("RESET PINS & NICKNAMES") {

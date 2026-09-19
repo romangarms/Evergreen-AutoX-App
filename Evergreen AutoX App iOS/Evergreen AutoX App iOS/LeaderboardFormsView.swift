@@ -208,7 +208,7 @@ struct CourseFormView: View {
             if let editing {
                 try await model.updateCourse(id: editing.id, input)
             } else {
-                if model.posterName.isEmpty { model.posterName = creator }
+                if !creator.isEmpty { model.posterName = creator }
                 try await model.createCourse(input)
             }
             dismiss()
@@ -225,14 +225,12 @@ struct RunFormView: View {
     let course: LBCourse
 
     @State private var driver = ""
-    @State private var time = ""
     @State private var vehicle = ""
     @State private var hp = ""
-    @State private var topSpeed = ""
     @State private var conditions = ""
+    @State private var legacy = false
     @State private var notes = ""
     @State private var date = Date()
-    @State private var source = "manual"
     @State private var showImporter = false
     @State private var importing = false
     @State private var laps: [TALap] = []
@@ -244,11 +242,10 @@ struct RunFormView: View {
         EGSheetFrame(title: "Post a Time", subtitle: course.name) {
             importBox
             EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
-            EGFormField(label: "TIME", placeholder: "1:17.967 or 77.967", text: $time, keyboard: .numbersAndPunctuation, capitalization: .never)
-            EGFormField(label: "VEHICLE (OPTIONAL)", placeholder: "2007 BMW Z4M", text: $vehicle)
             HStack(spacing: 10) {
+                EGFormField(label: "VEHICLE (OPTIONAL)", placeholder: "2007 BMW Z4M", text: $vehicle)
                 EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
-                EGFormField(label: "TOP MPH (OPTIONAL)", placeholder: "102.5", text: $topSpeed, keyboard: .decimalPad)
+                    .frame(width: 96)
             }
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -258,6 +255,9 @@ struct RunFormView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 EGFormField(label: "CONDITIONS", placeholder: "Dry", text: $conditions)
+            }
+            if let legacyDistance = course.legacyDistanceMiles, let distance = course.distanceMiles {
+                legacyToggle(legacyDistance: legacyDistance, distance: distance)
             }
             EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, traffic, anything worth knowing", text: $notes, capitalization: .sentences)
             EGErrorText(text: error)
@@ -284,7 +284,7 @@ struct RunFormView: View {
                     Text("TRACKADDICT LOG")
                         .font(.system(size: 11, weight: .heavy))
                         .kerning(1)
-                    Text(laps.isEmpty ? "Import a CSV export to fill in the time and top speed." : "Tap a lap to use it.")
+                    Text(laps.isEmpty ? "Import a CSV export. The time and top speed come from the lap you pick." : "Tap the lap to post.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Color.egGrayDark)
                 }
@@ -315,13 +315,28 @@ struct RunFormView: View {
         .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 2))
     }
 
+    private func legacyToggle(legacyDistance: Double, distance: Double) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                legacy.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    EGCheckbox(checked: legacy, size: 18)
+                    Text(String(format: "LEGACY %.2f MI ROUTE", legacyDistance))
+                }
+            }
+            .buttonStyle(EGChipButtonStyle())
+            Text(String(format: "Check this if the run used the old %.2f mi route. Its time is scaled to the current %.2f mi so it ranks fairly.", legacyDistance, distance))
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func lapRow(_ lap: TALap) -> some View {
         let selected = lap.lap == selectedLap
         return Button {
             selectedLap = lap.lap
-            time = lap.time ?? ""
-            topSpeed = lap.topSpeedMph.map { String(format: "%.1f", $0) } ?? topSpeed
-            source = "trackaddict"
         } label: {
             HStack(spacing: 8) {
                 Text(lap.lap == 0 ? "PRE-START" : "LAP \(lap.lap)")
@@ -364,7 +379,8 @@ struct RunFormView: View {
             let data = try Data(contentsOf: url)
             let parsed = try await model.parseTrackAddict(csv: data)
             laps = parsed.filter { $0.timeSeconds != nil }
-            selectedLap = nil
+            let timedRuns = laps.filter { $0.lap != 0 }
+            selectedLap = timedRuns.count == 1 ? timedRuns[0].lap : nil
             if laps.isEmpty { error = "No laps with times were found in that file." }
         } catch {
             self.error = error.localizedDescription
@@ -377,9 +393,8 @@ struct RunFormView: View {
             error = "Enter the driver's name."
             return
         }
-        let timeText = time.trimmingCharacters(in: .whitespaces)
-        guard let seconds = LapTime.seconds(from: timeText), seconds > 0 else {
-            error = "Enter the time as m:ss.mmm or plain seconds."
+        guard let lap = laps.first(where: { $0.lap == selectedLap }), let time = lap.time else {
+            error = laps.isEmpty ? "Import a TrackAddict CSV to post a time." : "Tap the lap you want to post."
             return
         }
         var horsepower: Int?
@@ -390,29 +405,22 @@ struct RunFormView: View {
             }
             horsepower = value
         }
-        var top: Double?
-        if !topSpeed.trimmingCharacters(in: .whitespaces).isEmpty {
-            guard let value = Double(topSpeed.trimmingCharacters(in: .whitespaces)), value >= 0 else {
-                error = "Top speed must be a number."
-                return
-            }
-            top = value
-        }
         let input = LBRunInput(
             driver: driver,
-            time: timeText,
+            time: time,
             vehicle: vehicle.trimmingCharacters(in: .whitespaces).nilIfEmpty,
             hp: horsepower,
-            topSpeedMph: top,
+            topSpeedMph: lap.topSpeedMph.map { ($0 * 10).rounded() / 10 },
             runDate: Self.dateString(date),
             conditions: conditions.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            legacy: legacy,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            source: source
+            source: "trackaddict"
         )
         saving = true
         error = nil
         do {
-            if model.posterName.isEmpty { model.posterName = driver }
+            model.posterName = driver
             try await model.addRun(courseID: course.id, input)
             dismiss()
         } catch {

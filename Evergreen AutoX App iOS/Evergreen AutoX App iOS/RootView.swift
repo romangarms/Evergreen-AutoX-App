@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var nav = NavTracker()
     @State private var showOrgPrompt = false
     @State private var orgIDText = ""
 
@@ -26,7 +28,7 @@ struct RootView: View {
         }
     }
 
-    private var headerInfo: (tag: String, title: String, sub: String?, switchable: Bool) {
+    private var headerInfo: (tag: String, title: String, sub: String?, changesEvent: Bool) {
         let sessionName = model.selectedSession.map { model.sessionLabel($0) }
         switch model.screen {
         case .driver(let position):
@@ -34,8 +36,6 @@ struct RootView: View {
             return ("DRIVER", driver.map { "P\($0.position) — #\($0.startNumber)" } ?? "Driver", sessionName, false)
         case .compare:
             return ("VS", "Head-to-head", sessionName, false)
-        case .sessions:
-            return ("EVENT", "Pick a session", nil, false)
         case .leaderboard(let courseID):
             let course = model.leaderboardCourses.first { $0.id == courseID }
             return ("LEADERBOARD", course?.name ?? "Leaderboard", course?.createdBy.map { "Created by \($0)" }, false)
@@ -46,14 +46,9 @@ struct RootView: View {
         case nil:
             switch model.tab {
             case .live:
-                // GGLC events all share one name, so without the date the header
-                // can't show which one is loaded.
-                var parts = [sessionName].compactMap(\.self)
-                if let event = model.selectedEvent, event.source == .gglc,
-                   let date = AppModel.eventDate(event.startDate) {
-                    parts.append(date)
-                }
-                let sub = parts.isEmpty ? nil : parts.joined(separator: " · ")
+                // Many events share a name, so the date is what says which one
+                // is loaded.
+                let sub = AppModel.eventDate(model.selectedEvent?.startDate) ?? sessionName
                 return ("LIVE", model.selectedEvent?.name ?? "Evergreen AutoX", sub, true)
             case .friends:
                 return ("FRIENDS", "Your people", sessionName, false)
@@ -76,11 +71,9 @@ struct RootView: View {
                     .lineLimit(1)
             }
             if let sub = info.sub {
-                if info.switchable {
+                if info.changesEvent {
                     Button {
-                        if let eventID = model.selectedEventID {
-                            model.open(screen: .sessions(eventID))
-                        }
+                        model.select(tab: .events)
                     } label: {
                         HStack(spacing: 8) {
                             Text(sub)
@@ -90,14 +83,17 @@ struct RootView: View {
                                 .lineLimit(1)
                             Spacer(minLength: 8)
                             HStack(spacing: 4) {
-                                Text("SWITCH")
-                                Image(systemName: "chevron.down")
+                                Text("CHANGE EVENT")
+                                Image(systemName: "chevron.right")
                                     .font(.system(size: 9, weight: .heavy))
                             }
                         }
                     }
                     .buttonStyle(EGChipButtonStyle(tint: .egRed))
                     .padding(.top, 6)
+                    if model.sessions.count > 1 {
+                        sessionMenu
+                    }
                 } else {
                     Text(sub)
                         .font(.system(size: 11.5))
@@ -110,7 +106,9 @@ struct RootView: View {
         .padding(.top, 10)
         .padding(.bottom, 12)
         .overlay(alignment: .topTrailing) {
-            if model.tab == .events, model.screen == nil {
+            if case .driver(let position) = model.screen, let driver = model.driver(at: position) {
+                driverMenu(driver)
+            } else if model.tab == .events, model.screen == nil {
                 eventsMenu
             }
         }
@@ -119,33 +117,113 @@ struct RootView: View {
         }
     }
 
+    private var sessionMenu: some View {
+        Menu {
+            ForEach(AppModel.byMostRecent(model.sessions)) { session in
+                Button {
+                    model.pickSession(session.id)
+                } label: {
+                    if session.id == model.selectedSessionID {
+                        Label(model.sessionLabel(session), systemImage: "checkmark")
+                    } else {
+                        Text(model.sessionLabel(session))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                EGColumnLabel(text: "SESSION")
+                Text(model.selectedSession.map { model.sessionLabel($0) } ?? "—")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(Color.egInk)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Color.egGray)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+        }
+    }
+
     private var eventsMenu: some View {
         Menu {
             Button {
-                orgIDText = model.orgIDString
-                showOrgPrompt = true
+                Task { await model.loadEvents() }
             } label: {
-                Label("Set Organization ID…", systemImage: "building.2")
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            if model.devMode {
+                Button {
+                    orgIDText = model.orgIDString
+                    showOrgPrompt = true
+                } label: {
+                    Label("Set Organization ID…", systemImage: "building.2")
+                }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 23, weight: .semibold))
-                .foregroundStyle(Color.egInk)
-                .frame(width: 48, height: 48)
-                .contentShape(Rectangle())
+            menuIcon
         }
         .padding(.trailing, 4)
     }
 
-    @ViewBuilder
+    private func driverMenu(_ driver: Driver) -> some View {
+        let pinned = model.pins.contains(driver.startNumber)
+        let isMe = driver.startNumber == model.meNumber
+        return Menu {
+            Button {
+                model.meNumber = isMe ? nil : driver.startNumber
+            } label: {
+                Label(isMe ? "This Isn't Me" : "This Is Me", systemImage: isMe ? "person.slash" : "person.fill.checkmark")
+            }
+            Button {
+                model.togglePin(driver.startNumber)
+            } label: {
+                Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "star.slash" : "star")
+            }
+            Button {
+                model.renameText = model.nicknames[driver.startNumber] ?? ""
+                model.isRenaming = true
+            } label: {
+                Label("Rename…", systemImage: "pencil")
+            }
+        } label: {
+            menuIcon
+        }
+        .padding(.trailing, 4)
+    }
+
+    private var menuIcon: some View {
+        Image(systemName: "ellipsis.circle")
+            .font(.system(size: 23, weight: .semibold))
+            .foregroundStyle(Color.egInk)
+            .frame(width: 48, height: 48)
+            .contentShape(Rectangle())
+    }
+
     private var content: some View {
+        let route = NavRoute(tab: model.tab, screen: model.screen)
+        nav.update(to: route)
+        return ZStack {
+            screenContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.egBg)
+                .id(route)
+                .transition(NavTransition(tracker: nav, slides: !reduceMotion))
+        }
+        .clipped()
+        .animation(.snappy(duration: 0.3), value: route)
+    }
+
+    @ViewBuilder
+    private var screenContent: some View {
         switch model.screen {
         case .driver(let position):
             DriverDetailView(position: position)
         case .compare(let a, let b):
             CompareView(positionA: a, positionB: b)
-        case .sessions(let eventID):
-            SessionPickerView(eventID: eventID)
         case .leaderboard(let courseID):
             LeaderboardView(courseID: courseID)
         case .leaderboardDriver(let courseID, let position):
@@ -186,6 +264,63 @@ struct RootView: View {
         .overlay(alignment: .top) {
             Color.egDivider.frame(height: 2)
         }
+    }
+}
+
+private struct NavRoute: Hashable {
+    let tab: AppModel.Tab
+    let screen: AppModel.Screen?
+
+    var depth: Int {
+        switch screen {
+        case nil: 0
+        case .driver, .leaderboard: 1
+        case .compare, .leaderboardDriver: 2
+        }
+    }
+}
+
+private enum NavDirection {
+    case forward, back, fade
+}
+
+// A view being removed animates with the transition it was last rendered
+// with, which predates the navigation that removed it. Holding the direction
+// in a reference lets the outgoing and incoming views agree on it.
+@MainActor
+private final class NavTracker {
+    private var route: NavRoute?
+    private(set) var direction = NavDirection.fade
+
+    func update(to newRoute: NavRoute) {
+        guard newRoute != route else { return }
+        if let route {
+            if newRoute.tab != route.tab {
+                direction = .fade
+            } else {
+                direction = newRoute.depth < route.depth ? .back : .forward
+            }
+        }
+        route = newRoute
+    }
+}
+
+private struct NavTransition: Transition {
+    let tracker: NavTracker
+    let slides: Bool
+
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        let direction = slides ? tracker.direction : .fade
+        let shift: CGFloat = switch direction {
+        case .forward: -phase.value
+        case .back: phase.value
+        case .fade: 0
+        }
+        content
+            .opacity(direction == .fade && !phase.isIdentity ? 0 : 1)
+            .visualEffect { view, proxy in
+                view.offset(x: proxy.size.width * shift)
+            }
     }
 }
 

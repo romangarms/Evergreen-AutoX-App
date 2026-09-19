@@ -16,7 +16,6 @@ struct DriverDetailView: View {
         @Bindable var model = model
         let nickname = model.nicknames[driver.startNumber]
         let isMe = driver.startNumber == model.meNumber
-        let pinned = model.pins.contains(driver.startNumber)
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -31,6 +30,11 @@ struct DriverDetailView: View {
                             .lineLimit(2)
                         if isMe {
                             EGTag(text: "ME", background: .egInk, foreground: .egBg, size: 9)
+                        }
+                        if model.pins.contains(driver.startNumber) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.egRed)
                         }
                     }
                     Text(nickname != nil ? driver.name : "No nickname yet")
@@ -62,22 +66,11 @@ struct DriverDetailView: View {
                 statsGrid(driver)
                 runsTable(driver)
 
-                HStack(spacing: 8) {
-                    Button(pinned ? "UNPIN" : "PIN") {
-                        model.togglePin(driver.startNumber)
+                if !isMe, let me = model.me {
+                    Button("COMPARE VS ME") {
+                        model.open(screen: .compare(me.position, driver.position))
                     }
-                    .buttonStyle(EGButtonStyle())
-                    Button("RENAME") {
-                        model.renameText = nickname ?? ""
-                        model.isRenaming = true
-                    }
-                    .buttonStyle(EGButtonStyle())
-                    if !isMe, let me = model.me {
-                        Button("COMPARE VS ME") {
-                            model.open(screen: .compare(me.position, driver.position))
-                        }
-                        .buttonStyle(EGButtonStyle(kind: .primary))
-                    }
+                    .buttonStyle(EGButtonStyle(kind: .primary))
                 }
             }
             .padding(.horizontal, 16)

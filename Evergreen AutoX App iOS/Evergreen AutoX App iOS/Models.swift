@@ -169,11 +169,12 @@ struct LBRunInput: Encodable {
     var topSpeedMph: Double?
     var runDate: String?
     var conditions: String?
+    var legacy: Bool
     var notes: String?
     var source: String
 
     enum CodingKeys: String, CodingKey {
-        case driver, time, vehicle, hp, conditions, notes, source
+        case driver, time, vehicle, hp, conditions, legacy, notes, source
         case topSpeedMph = "top_speed_mph"
         case runDate = "run_date"
     }
@@ -285,6 +286,27 @@ struct LBRun: Codable, Identifiable {
         notes = try c.decodeIfPresent(String.self, forKey: .notes)
         legacy = try c.decode(Bool.self, forKey: .legacy)
         isOwner = try c.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
+    }
+}
+
+// A driver's runs in one car. The same driver in another car is a separate
+// entry with its own rank, so a record in each car stays visible.
+struct LBEntry: Identifiable {
+    let driver: Driver
+    let best: LBRun
+    let runs: [LBRun]
+
+    var id: Int { driver.position }
+
+    init(rank: Int, best: LBRun, runs: [LBRun]) {
+        driver = Driver(rank: rank, name: best.driver, leaderboardRuns: runs)
+        self.best = best
+        self.runs = runs
+    }
+
+    static func groupKey(_ run: LBRun) -> String {
+        let vehicle = (run.vehicle ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        return "\(run.driver)\u{0}\(vehicle)"
     }
 }
 
