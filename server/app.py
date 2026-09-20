@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from speedhive.generated.api.session_controller import get_all_lap_times
 from speedhive.wrapper import SpeedhiveClient
 
-app = FastAPI(title="Evergreen AutoX server")
+app = FastAPI(title="AutoX Live server")
 
 # The leaderboard site at romangarms.com/ar/ reads the API straight from the browser.
 app.add_middleware(
@@ -234,6 +234,10 @@ class CourseOwnerIn(BaseModel):
     device_token: str | None
 
 
+class HiddenIn(BaseModel):
+    hidden: bool
+
+
 class RunIn(BaseModel):
     driver: NameStr
     time: float | str
@@ -287,16 +291,18 @@ def _parse_time(value: float | str) -> float:
     return seconds
 
 
-def _get_course(conn, course_id: int):
+# Hiding is the moderation tool: a hidden board or run does not exist for
+# anyone but the admin, its owner included, so a poster cannot undo it.
+def _get_course(conn, course_id: int, actor: Actor):
     course = conn.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
-    if course is None:
+    if course is None or (course["hidden"] and not actor.is_admin):
         raise HTTPException(status_code=404, detail=f"Course {course_id} not found")
     return course
 
 
-def _get_run(conn, run_id: int):
+def _get_run(conn, run_id: int, actor: Actor):
     run = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-    if run is None:
+    if run is None or (run["hidden"] and not actor.is_admin):
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return run
 
@@ -339,6 +345,7 @@ def list_courses(actor: ActorDep):
         return [
             db.course_to_dict(row, actor.device_id)
             for row in conn.execute("SELECT * FROM courses ORDER BY id")
+            if actor.is_admin or not row["hidden"]
         ]
 
 
@@ -376,7 +383,9 @@ def create_course(course: CourseIn, actor: WriterDep):
             raise HTTPException(
                 status_code=409, detail=f"A leaderboard named {name!r} already exists"
             ) from exc
-        return db.course_to_dict(_get_course(conn, cur.lastrowid), actor.device_id)
+        return db.course_to_dict(
+            _get_course(conn, cur.lastrowid, actor), actor.device_id
+        )
 
 
 @app.patch("/api/leaderboard/courses/{course_id}")
@@ -390,7 +399,7 @@ def update_course(course_id: int, update: CourseUpdate, actor: WriterDep):
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     with db.session() as conn:
-        _require_course_owner(_get_course(conn, course_id), actor)
+        _require_course_owner(_get_course(conn, course_id, actor), actor)
         if "name" in fields:
             _reject_duplicate_name(conn, fields["name"], exclude_id=course_id)
         assignments = ", ".join(f"{name} = ?" for name in fields)
@@ -404,26 +413,36 @@ def update_course(course_id: int, update: CourseUpdate, actor: WriterDep):
                 status_code=409,
                 detail=f"A leaderboard named {fields['name']!r} already exists",
             ) from exc
-        return db.course_to_dict(_get_course(conn, course_id), actor.device_id)
+        return db.course_to_dict(_get_course(conn, course_id, actor), actor.device_id)
 
 
 # Hands a board to a device (or back to nobody with a null token); the only way
 # an admin-created board gets an owner.
 @app.put("/api/leaderboard/courses/{course_id}/owner")
-def set_course_owner(course_id: int, owner: CourseOwnerIn, _: AdminDep):
+def set_course_owner(course_id: int, owner: CourseOwnerIn, admin: AdminDep):
     token = owner.device_token.strip() if owner.device_token else None
     if token is not None and not DEVICE_TOKEN.match(token):
         raise HTTPException(status_code=400, detail="Malformed device token")
     with db.session() as conn:
-        _get_course(conn, course_id)
+        _get_course(conn, course_id, admin)
         conn.execute("UPDATE courses SET owner_id = ? WHERE id = ?", (token, course_id))
-        return db.course_to_dict(_get_course(conn, course_id))
+        return db.course_to_dict(_get_course(conn, course_id, admin))
+
+
+@app.put("/api/leaderboard/courses/{course_id}/hidden")
+def set_course_hidden(course_id: int, body: HiddenIn, admin: AdminDep):
+    with db.session() as conn:
+        _get_course(conn, course_id, admin)
+        conn.execute(
+            "UPDATE courses SET hidden = ? WHERE id = ?", (int(body.hidden), course_id)
+        )
+        return db.course_to_dict(_get_course(conn, course_id, admin))
 
 
 @app.delete("/api/leaderboard/courses/{course_id}")
 def delete_course(course_id: int, actor: WriterDep):
     with db.session() as conn:
-        _require_course_owner(_get_course(conn, course_id), actor)
+        _require_course_owner(_get_course(conn, course_id, actor), actor)
         conn.execute("DELETE FROM courses WHERE id = ?", (course_id,))
         return {"deleted": course_id}
 
@@ -431,12 +450,13 @@ def delete_course(course_id: int, actor: WriterDep):
 @app.get("/api/leaderboard/courses/{course_id}")
 def get_leaderboard(course_id: int, actor: ActorDep):
     with db.session() as conn:
-        course = _get_course(conn, course_id)
+        course = _get_course(conn, course_id, actor)
         runs = [
             db.run_to_dict(row, course, actor.device_id)
             for row in conn.execute(
                 "SELECT * FROM runs WHERE course_id = ?", (course_id,)
             )
+            if actor.is_admin or not row["hidden"]
         ]
         runs.sort(key=lambda r: r["adjusted_seconds"])
         return {"course": db.course_to_dict(course, actor.device_id), "runs": runs}
@@ -449,7 +469,7 @@ def create_run(course_id: int, run: RunIn, actor: WriterDep):
     if not driver:
         raise HTTPException(status_code=400, detail="Driver cannot be blank")
     with db.session() as conn:
-        course = _get_course(conn, course_id)
+        course = _get_course(conn, course_id, actor)
         cur = conn.execute(
             """INSERT INTO runs (course_id, driver, vehicle, hp, time_seconds,
                 avg_speed_mph, top_speed_mph, run_date, time_of_day, conditions,
@@ -472,7 +492,9 @@ def create_run(course_id: int, run: RunIn, actor: WriterDep):
                 actor.device_id,
             ),
         )
-        return db.run_to_dict(_get_run(conn, cur.lastrowid), course, actor.device_id)
+        return db.run_to_dict(
+            _get_run(conn, cur.lastrowid, actor), course, actor.device_id
+        )
 
 
 @app.patch("/api/leaderboard/runs/{run_id}")
@@ -490,38 +512,45 @@ def update_run(run_id: int, update: RunUpdate, actor: WriterDep):
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     with db.session() as conn:
-        row = _get_run(conn, run_id)
-        course = _get_course(conn, row["course_id"])
+        row = _get_run(conn, run_id, actor)
+        course = _get_course(conn, row["course_id"], actor)
         _require_run_owner(row, course, actor)
         assignments = ", ".join(f"{name} = ?" for name in fields)
         conn.execute(
             f"UPDATE runs SET {assignments} WHERE id = ?",
             (*fields.values(), run_id),
         )
-        return db.run_to_dict(_get_run(conn, run_id), course, actor.device_id)
+        return db.run_to_dict(_get_run(conn, run_id, actor), course, actor.device_id)
+
+
+@app.put("/api/leaderboard/runs/{run_id}/hidden")
+def set_run_hidden(run_id: int, body: HiddenIn, admin: AdminDep):
+    with db.session() as conn:
+        row = _get_run(conn, run_id, admin)
+        conn.execute(
+            "UPDATE runs SET hidden = ? WHERE id = ?", (int(body.hidden), run_id)
+        )
+        course = _get_course(conn, row["course_id"], admin)
+        return db.run_to_dict(_get_run(conn, run_id, admin), course)
 
 
 @app.delete("/api/leaderboard/runs/{run_id}")
 def delete_run(run_id: int, actor: WriterDep):
     with db.session() as conn:
-        row = _get_run(conn, run_id)
-        _require_run_owner(row, _get_course(conn, row["course_id"]), actor)
+        row = _get_run(conn, run_id, actor)
+        _require_run_owner(row, _get_course(conn, row["course_id"], actor), actor)
         conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
         return {"deleted": run_id}
 
 
 @app.post("/api/leaderboard/reports", status_code=201)
 def create_report(report: ReportIn, actor: WriterDep):
-    table = "courses" if report.target_type == "course" else "runs"
     with db.session() as conn:
-        exists = conn.execute(
-            f"SELECT 1 FROM {table} WHERE id = ?", (report.target_id,)
-        ).fetchone()
-        if exists is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"{report.target_type.capitalize()} {report.target_id} not found",
-            )
+        if report.target_type == "course":
+            _get_course(conn, report.target_id, actor)
+        else:
+            run = _get_run(conn, report.target_id, actor)
+            _get_course(conn, run["course_id"], actor)
         cur = conn.execute(
             "INSERT INTO reports (target_type, target_id, reason, reporter_id) VALUES (?, ?, ?, ?)",
             (
@@ -543,13 +572,14 @@ def list_reports(_: AdminDep):
             report.pop("reporter_id")
             if row["target_type"] == "course":
                 target = conn.execute(
-                    "SELECT id, name FROM courses WHERE id = ?", (row["target_id"],)
+                    "SELECT id, name, hidden FROM courses WHERE id = ?",
+                    (row["target_id"],),
                 ).fetchone()
                 report["target"] = dict(target) if target else None
             else:
                 target = conn.execute(
                     """SELECT runs.id, runs.driver, runs.time_seconds, runs.course_id,
-                              courses.name AS course_name
+                              runs.hidden, courses.name AS course_name
                        FROM runs JOIN courses ON courses.id = runs.course_id
                        WHERE runs.id = ?""",
                     (row["target_id"],),
@@ -584,6 +614,16 @@ async def parse_trackaddict(request: Request):
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/privacy", include_in_schema=False)
+def privacy():
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
+@app.get("/support", include_in_schema=False)
+def support():
+    return FileResponse(STATIC_DIR / "support.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

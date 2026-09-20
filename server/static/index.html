@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Evergreen AutoX — dev console</title>
+<title>AutoX Live — dev console</title>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #fff; --border: #d9dde3; --text: #1c2733;
@@ -80,6 +80,10 @@
     padding: 1px 6px; border-radius: 8px; background: var(--bg); color: var(--muted);
     border: 1px solid var(--border); margin-left: 0.3rem; }
   .badge.legacy { background: #fdf3e0; color: #8a6100; border-color: #e8d5a3; }
+  .badge.hidden { background: #fbe9e7; color: var(--danger); border-color: #efc4be; }
+  tr.is-hidden td { opacity: 0.55; }
+  tr.is-hidden td.hide-cell { opacity: 1; }
+  label.check.inline { align-self: center; padding-bottom: 0; }
   td .btn { padding: 0.1rem 0.5rem; font-size: 12px; }
 
   .form-grid { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
@@ -113,7 +117,7 @@
 </head>
 <body>
 <header>
-  <h1>Evergreen AutoX <span>dev console</span></h1>
+  <h1>AutoX Live <span>dev console</span></h1>
   <nav>
     <button data-tab="leaderboard" class="active">Leaderboard</button>
     <button data-tab="speedhive">Speedhive</button>
@@ -189,6 +193,7 @@
           <h2 id="lb-title" style="margin:0">No course selected</h2>
           <div class="row" id="lb-course-actions" style="display:none">
             <span class="muted" id="lb-course-meta"></span>
+            <label class="check inline" title="Hidden boards disappear from the app and the public API. Admin login required."><input id="course-hidden" type="checkbox"> hidden</label>
             <button class="btn" id="course-edit-btn">Edit course</button>
             <button class="btn" id="course-owner-btn">Set owner</button>
             <button class="btn danger" id="course-del-btn">Delete course</button>
@@ -199,9 +204,9 @@
             <thead><tr>
               <th class="num">#</th><th class="num">Adj time</th><th class="num">Raw time</th>
               <th>Driver</th><th>Vehicle</th><th class="num">HP</th>
-              <th class="num">Top</th><th class="num">Avg</th><th>Date</th><th></th><th></th>
+              <th class="num">Top</th><th class="num">Avg</th><th>Date</th><th>Hidden</th><th></th><th></th>
             </tr></thead>
-            <tbody><tr><td colspan="11" class="muted">Select a course on the left.</td></tr></tbody>
+            <tbody><tr><td colspan="12" class="muted">Select a course on the left.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -313,10 +318,12 @@ $("login-form").onsubmit = () => {
   auth.set($("login-user").value.trim(), $("login-pass").value);
   renderAuth();
   loginDialog.close("ok");
+  // Hidden boards and runs are only listed for the admin.
+  loadCourses(currentCourse?.id);
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
 $("auth-btn").onclick = () => {
-  if (auth.token) { auth.clear(); renderAuth(); } else promptLogin();
+  if (auth.token) { auth.clear(); renderAuth(); loadCourses(currentCourse?.id); } else promptLogin();
 };
 function renderAuth() {
   $("auth-btn").textContent = auth.token ? `Sign out (${auth.user})` : "Sign in";
@@ -393,7 +400,7 @@ const showJSON = data => { $("lb-json").textContent = JSON.stringify(data, null,
 async function loadCourses(selectId) {
   const courses = await api("/api/leaderboard/courses");
   fillList($("course-list"), courses,
-    c => `${esc(c.name)}<br><span class="sub">#${c.id} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
+    c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}<br><span class="sub">#${c.id} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
@@ -426,6 +433,7 @@ async function refreshLeaderboard() {
   meta.push(data.course.has_owner ? "owned by a device" : "no owner");
   if (data.course.description) meta.push(data.course.description);
   $("lb-course-meta").textContent = meta.join(" · ");
+  $("course-hidden").checked = data.course.hidden;
   renderRuns(data.runs);
 }
 
@@ -433,12 +441,12 @@ function renderRuns(runs) {
   const tbody = $("lb-table").querySelector("tbody");
   tbody.innerHTML = "";
   if (!runs.length) {
-    tbody.innerHTML = "<tr><td colspan='11' class='muted'>No runs yet.</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='12' class='muted'>No runs yet.</td></tr>";
     return;
   }
   runs.forEach((r, i) => {
     const tr = document.createElement("tr");
-    tr.className = "clickable" + (r.id === editingRunId ? " editing" : "");
+    tr.className = "clickable" + (r.id === editingRunId ? " editing" : "") + (r.hidden ? " is-hidden" : "");
     tr.innerHTML = `
       <td class="num">${i + 1}</td>
       <td class="num"><strong>${r.adjusted_time}</strong></td>
@@ -449,10 +457,14 @@ function renderRuns(runs) {
       <td class="num">${r.top_speed_mph ?? ""}</td>
       <td class="num">${r.avg_speed_mph ?? ""}</td>
       <td>${esc(r.run_date ?? "")}</td>
+      <td class="hide-cell"><input type="checkbox" data-act="hide" title="Hide this run from the app"${r.hidden ? " checked" : ""}></td>
       <td><button class="btn" data-act="edit">Edit</button></td>
       <td><button class="btn danger" data-act="del">Delete</button></td>`;
     tr.onclick = () => showJSON(r);
     tr.querySelector("[data-act=edit]").onclick = e => { e.stopPropagation(); startRunEdit(r); };
+    const hideBox = tr.querySelector("[data-act=hide]");
+    hideBox.onclick = e => e.stopPropagation();
+    hideBox.onchange = () => setHidden("runs", r.id, hideBox);
     const delBtn = tr.querySelector("[data-act=del]");
     delBtn.onclick = e => e.stopPropagation();
     armConfirm(delBtn, async () => {
@@ -463,6 +475,19 @@ function renderRuns(runs) {
     tbody.appendChild(tr);
   });
 }
+
+// The checkbox only keeps its new state if the server accepted it.
+async function setHidden(kind, id, box) {
+  try {
+    showJSON(await apiJSON(`/api/leaderboard/${kind}/${id}/hidden`, "PUT", { hidden: box.checked }));
+  } catch {
+    box.checked = !box.checked;
+    return;
+  }
+  if (kind === "courses") loadCourses(currentCourse?.id);
+  else refreshLeaderboard();
+}
+$("course-hidden").onchange = () => { if (currentCourse) setHidden("courses", currentCourse.id, $("course-hidden")); };
 
 const runFields = {
   driver: () => $("run-driver").value,
@@ -579,7 +604,7 @@ armConfirm($("course-del-btn"), async () => {
   $("lb-title").textContent = "No course selected";
   $("lb-course-actions").style.display = "none";
   $("lb-table").querySelector("tbody").innerHTML =
-    "<tr><td colspan='11' class='muted'>Select a course on the left.</td></tr>";
+    "<tr><td colspan='12' class='muted'>Select a course on the left.</td></tr>";
   loadCourses();
 });
 
@@ -596,9 +621,17 @@ async function loadReports() {
       : `${r.target_type} #${r.target_id} (deleted)`;
     const li = document.createElement("li");
     li.innerHTML = `${target}<br><span class="sub">${esc(r.reason ?? "")} · ${esc(r.created_at)}</span>
-      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button></div>`;
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button>${r.target ? `<label class="check inline"><input type="checkbox" data-act="hide"${r.target.hidden ? " checked" : ""}> hidden</label>` : ""}</div>`;
     const courseId = r.target ? (r.target_type === "course" ? r.target.id : r.target.course_id) : null;
     li.querySelector("[data-act=open]").onclick = e => { e.stopPropagation(); if (courseId != null) loadCourses(courseId); };
+    const reportHide = li.querySelector("[data-act=hide]");
+    if (reportHide) {
+      reportHide.parentElement.onclick = e => e.stopPropagation();
+      reportHide.onchange = async () => {
+        await setHidden(r.target_type === "course" ? "courses" : "runs", r.target.id, reportHide);
+        loadReports();
+      };
+    }
     li.querySelector("[data-act=dismiss]").onclick = async e => {
       e.stopPropagation();
       await api(`/api/leaderboard/reports/${r.id}`, { method: "DELETE" });

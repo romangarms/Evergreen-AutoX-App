@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS courses (
     description TEXT,
     owner_id TEXT,
     created_by TEXT,
-    created_at TEXT
+    created_at TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -31,7 +32,8 @@ CREATE TABLE IF NOT EXISTS runs (
     notes TEXT,
     source TEXT NOT NULL DEFAULT 'manual',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    owner_id TEXT
+    owner_id TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY,
@@ -52,6 +54,8 @@ ADDED_COLUMNS = [
     ("courses", "created_by", "TEXT"),
     ("courses", "created_at", "TEXT"),
     ("runs", "owner_id", "TEXT"),
+    ("courses", "hidden", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "hidden", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -110,6 +114,7 @@ def course_to_dict(course: sqlite3.Row, viewer_id: str | None = None) -> dict:
     out = dict(course)
     owner = out.pop("owner_id")
     out["has_owner"] = owner is not None
+    out["hidden"] = bool(out["hidden"])
     out["is_owner"] = owner is not None and owner == viewer_id
     return out
 
@@ -122,6 +127,7 @@ def run_to_dict(
     owner = out.pop("owner_id", None)
     out["is_owner"] = owner is not None and owner == viewer_id
     out["legacy"] = bool(out["legacy"])
+    out["hidden"] = bool(out["hidden"])
     out["time"] = format_time(out["time_seconds"])
     adj = adjusted_seconds(run, course)
     out["adjusted_seconds"] = round(adj, 3)

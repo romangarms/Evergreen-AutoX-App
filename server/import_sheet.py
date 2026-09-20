@@ -11,7 +11,7 @@ SKIDPAD = {
     "legacy_distance_miles": 1.7,
 }
 INTRO = {
-    "name": "Intro to HWY 9",
+    "name": "Intro to 9",
     "distance_miles": None,
     "legacy_distance_miles": None,
 }

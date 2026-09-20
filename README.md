@@ -1,6 +1,6 @@
-# Evergreen AutoX App
+# AutoX Live
 
-Live timing and results for Evergreen AutoX in your pocket. A SwiftUI iOS app backed by a small FastAPI server that wraps the MyLaps Speedhive API (via [speedhive-tools](https://github.com/cosmoslab58/speedhive-tools)), with bonus support for Golden Gate Lotus Club autocross results scraped from gglotus.org.
+Autocross timing and results in your pocket, built around the autocross events at Evergreen Speedway. An independent project, not affiliated with any event organizer or timing provider. A SwiftUI iOS app backed by a small FastAPI server that wraps the MyLaps Speedhive API (via [speedhive-tools](https://github.com/cosmoslab58/speedhive-tools)), with bonus support for Golden Gate Lotus Club autocross results scraped from gglotus.org.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ Four tabs:
 - **Live** — the leaderboard for the selected session: position, car number, best time, and run count for every entry. Your own car gets a **ME** tag and highlight, and you can star cars to keep an eye on them. Pull to refresh.
 - **Friends** — pin the cars you care about, see everyone's gap to your best time, and pick any two for a head-to-head: best/average/spread stats, a times-over-the-day chart, and a run-by-run gap breakdown.
 - **Events** — browse and search an organization's events, then drill into sessions and individual drivers. The **Leaderboards** section holds community leaderboards: anyone can create one from the app, post times to any board from a TrackAddict CSV export (the time and top speed come from the log, not from typing), and report or hide a board or run. Creators can edit and delete their own boards and any run on them.
-- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, and turn on dev mode, which unlocks pointing the app at your own server and switching Speedhive organizations (Events → ⋯ menu).
+- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, find the support and privacy links, and turn on dev mode (tap the version line seven times to reveal it), which unlocks pointing the app at your own server and switching Speedhive organizations (Events → ⋯ menu).
 
 ## Running the server
 
@@ -46,7 +46,7 @@ Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, 
 Reading the leaderboard is public. Writes accept two kinds of caller:
 
 - **Device token** (`Authorization: Bearer <token>`): the app mints a random token on first launch and keeps it in the Keychain. A token owns the courses and runs it created and can edit or delete those, plus any run on a course it owns. Each token can create at most 20 courses.
-- **Admin** (HTTP Basic auth with the credentials from `.env`): can edit or delete anything, and is the only one who can read or dismiss reports. Courses and runs created by the admin have no owner, so only the admin can change them.
+- **Admin** (HTTP Basic auth with the credentials from `.env`): can edit or delete anything, is the only one who can read or dismiss reports, and can hide a course or a run (the dev console's "hidden" checkboxes). Hidden rows stay in the database but no longer exist for anyone else, their owner included. Courses and runs created by the admin have no owner, so only the admin can change them.
 
 Admin credentials:
 
@@ -105,6 +105,7 @@ Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device t
 - `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
 - `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (owner or admin; deleting removes its runs)
 - `PUT /api/leaderboard/courses/{course_id}/owner` — admin only: hand a course to a device (`device_token`, or `null` for no owner)
+- `PUT /api/leaderboard/courses/{course_id}/hidden` and `PUT /api/leaderboard/runs/{run_id}/hidden` — admin only: hide or unhide (`hidden`: `true`/`false`); hidden rows are omitted from every non-admin response and 404 for non-admin writes
 - `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`)
 - `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
 - `POST /api/leaderboard/reports` — flag a course or run (`target_type` of `course`/`run`, `target_id`, `reason`)
