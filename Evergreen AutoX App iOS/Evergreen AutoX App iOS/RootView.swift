@@ -49,7 +49,7 @@ struct RootView: View {
                 // Many events share a name, so the date is what says which one
                 // is loaded.
                 let sub = AppModel.eventDate(model.selectedEvent?.startDate) ?? sessionName
-                return ("LIVE", model.selectedEvent?.name ?? "Evergreen AutoX", sub, true)
+                return ("LIVE", model.selectedEvent?.name ?? "AutoX Live", sub, true)
             case .friends:
                 return ("FRIENDS", "Your people", sessionName, false)
             case .events:

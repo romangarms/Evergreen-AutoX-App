@@ -106,7 +106,7 @@ struct GuidelinesView: View {
 
     var body: some View {
         EGSheetFrame(title: "Community Leaderboards", subtitle: "Read this once before you post.") {
-            Text("Leaderboards and times are posted by people using this app, not by Evergreen AutoX.")
+            Text("Leaderboards and times are posted by people using this app, not by event organizers.")
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 10) {

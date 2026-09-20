@@ -3,6 +3,17 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var copiedDeviceID = false
+    @State private var versionTaps = 0
+
+    private static let supportURL = URL(string: "\(AppModel.defaultBaseURL)/support")!
+    private static let privacyURL = URL(string: "\(AppModel.defaultBaseURL)/privacy")!
+
+    private static var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return "AutoX Live \(version) (\(build))"
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -88,37 +99,65 @@ struct SettingsView: View {
                 .buttonStyle(EGButtonStyle())
 
                 VStack(alignment: .leading, spacing: 8) {
-                    sectionHeader("DEV")
-                    Button {
-                        model.devMode.toggle()
-                        Task { await model.loadEvents() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            EGCheckbox(checked: model.devMode, size: 18)
-                            Text("DEV MODE")
-                        }
+                    sectionHeader("ABOUT")
+                    Text("An independent app. Not affiliated with any event organizer or timing provider.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.egGrayDark)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Link("SUPPORT", destination: Self.supportURL)
+                        Link("PRIVACY POLICY", destination: Self.privacyURL)
                     }
-                    .buttonStyle(EGChipButtonStyle())
-                    if model.devMode {
-                        Text("The device ID is what makes leaderboards and runs yours. Anyone who has it can edit them, so only paste it into the server console.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.egGrayDark)
-                        Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {
-                            UIPasteboard.general.string = DeviceIdentity.token
-                            copiedDeviceID = true
-                            Task {
-                                try? await Task.sleep(for: .seconds(2))
-                                copiedDeviceID = false
-                            }
+                    .buttonStyle(EGButtonStyle())
+                    Text(Self.versionLabel)
+                        .font(.system(size: 11))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.egGray)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            versionTaps += 1
                         }
-                        .buttonStyle(EGButtonStyle())
-                    }
+                }
+
+                if model.devMode || versionTaps >= 7 {
+                    devSection
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var devSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("DEV")
+            Button {
+                model.devMode.toggle()
+                Task { await model.loadEvents() }
+            } label: {
+                HStack(spacing: 8) {
+                    EGCheckbox(checked: model.devMode, size: 18)
+                    Text("DEV MODE")
+                }
+            }
+            .buttonStyle(EGChipButtonStyle())
+            if model.devMode {
+                Text("The device ID is what makes leaderboards and runs yours. Anyone who has it can edit them, so only paste it into the server console.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.egGrayDark)
+                Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {
+                    UIPasteboard.general.string = DeviceIdentity.token
+                    copiedDeviceID = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        copiedDeviceID = false
+                    }
+                }
+                .buttonStyle(EGButtonStyle())
+            }
         }
     }
 
