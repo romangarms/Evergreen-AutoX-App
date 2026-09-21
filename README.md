@@ -39,7 +39,7 @@ The public server is https://autox.romangarms.com, which is what the app uses by
 
 The server binds to `0.0.0.0` on purpose: when developing, set the app's server URL (Setup tab) to your Mac's LAN IP so your iPhone can reach it.
 
-Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser.
+Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser. Without an admin login it is read-only: the editing controls, the Reports queue, and the TrackAddict importer only appear after signing in with the credentials from `.env`, and hidden boards and runs are never listed.
 
 ### Leaderboard auth
 

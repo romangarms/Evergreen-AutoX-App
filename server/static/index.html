@@ -84,6 +84,7 @@
   tr.is-hidden td { opacity: 0.55; }
   tr.is-hidden td.hide-cell { opacity: 1; }
   label.check.inline { align-self: center; padding-bottom: 0; }
+  body:not(.admin) .admin-only { display: none !important; }
   td .btn { padding: 0.1rem 0.5rem; font-size: 12px; }
 
   .form-grid { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
@@ -129,8 +130,8 @@
 </header>
 
 <dialog id="login">
-  <h2>Sign in to edit</h2>
-  <p>Leaderboard edits need the server's admin credentials.</p>
+  <h2>Admin sign in</h2>
+  <p>Editing, moderation, and hidden boards need the server's admin credentials.</p>
   <form id="login-form" method="dialog">
     <label class="field">Username <input id="login-user" autocomplete="username" required></label>
     <label class="field">Password <input id="login-pass" type="password" autocomplete="current-password" required></label>
@@ -149,10 +150,10 @@
       <div class="panel">
         <h2>Courses</h2>
         <ul id="course-list" class="picklist"><li class="muted">(loading)</li></ul>
-        <div style="margin-top:0.5rem">
+        <div style="margin-top:0.5rem" class="admin-only">
           <button class="btn" id="course-new-btn">+ New course</button>
         </div>
-        <form id="course-form" style="display:none; margin-top:0.6rem" class="form-grid">
+        <form id="course-form" style="display:none; margin-top:0.6rem" class="form-grid admin-only">
           <label class="field">name <input id="course-name" class="w-lg" required></label>
           <label class="field">distance mi <input id="course-dist" type="number" step="any" class="w-sm"></label>
           <label class="field">legacy dist mi <input id="course-legacy-dist" type="number" step="any" class="w-sm"></label>
@@ -162,7 +163,7 @@
             <button class="btn" type="button" id="course-cancel-btn">Cancel</button>
           </div>
         </form>
-        <form id="owner-form" style="display:none; margin-top:0.6rem" class="form-grid">
+        <form id="owner-form" style="display:none; margin-top:0.6rem" class="form-grid admin-only">
           <label class="field">owner device ID (from the app: Setup → Dev mode → Copy device ID; empty = no owner)
             <input id="owner-token" class="w-lg" autocomplete="off" spellcheck="false"></label>
           <div class="actions">
@@ -171,13 +172,13 @@
           </div>
         </form>
       </div>
-      <div class="panel">
+      <div class="panel admin-only">
         <h2>Reports</h2>
-        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Flags sent from the app. Admin login required.</p>
+        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Flags sent from the app.</p>
         <button class="btn" id="reports-load-btn">Load reports</button>
         <ul id="report-list" class="picklist" style="margin-top:0.5rem"></ul>
       </div>
-      <div class="panel">
+      <div class="panel admin-only">
         <h2>TrackAddict import</h2>
         <div class="row">
           <input id="ta-file" type="file" accept=".csv" style="max-width:100%">
@@ -193,10 +194,10 @@
           <h2 id="lb-title" style="margin:0">No course selected</h2>
           <div class="row" id="lb-course-actions" style="display:none">
             <span class="muted" id="lb-course-meta"></span>
-            <label class="check inline" title="Hidden boards disappear from the app and the public API. Admin login required."><input id="course-hidden" type="checkbox"> hidden</label>
-            <button class="btn" id="course-edit-btn">Edit course</button>
-            <button class="btn" id="course-owner-btn">Set owner</button>
-            <button class="btn danger" id="course-del-btn">Delete course</button>
+            <label class="check inline admin-only" title="Hidden boards disappear from the app and the public API."><input id="course-hidden" type="checkbox"> hidden</label>
+            <button class="btn admin-only" id="course-edit-btn">Edit course</button>
+            <button class="btn admin-only" id="course-owner-btn">Set owner</button>
+            <button class="btn danger admin-only" id="course-del-btn">Delete course</button>
           </div>
         </div>
         <div class="table-scroll" style="margin-top:0.5rem">
@@ -204,14 +205,14 @@
             <thead><tr>
               <th class="num">#</th><th class="num">Adj time</th><th class="num">Raw time</th>
               <th>Driver</th><th>Vehicle</th><th class="num">HP</th>
-              <th class="num">Top</th><th class="num">Avg</th><th>Date</th><th>Hidden</th><th></th><th></th>
+              <th class="num">Top</th><th class="num">Avg</th><th>Date</th><th class="admin-only">Hidden</th><th class="admin-only"></th><th class="admin-only"></th>
             </tr></thead>
             <tbody><tr><td colspan="12" class="muted">Select a course on the left.</td></tr></tbody>
           </table>
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel admin-only">
         <h2 id="run-form-title">Add run</h2>
         <form id="run-form" class="form-grid">
           <label class="field">driver <input id="run-driver" class="w-md" required></label>
@@ -314,8 +315,26 @@ function promptLogin(message = "") {
   });
   return loginPending;
 }
-$("login-form").onsubmit = () => {
+// The reports list is admin-only, so fetching it proves the credentials.
+async function checkAdmin() {
+  if (!auth.token) return "";
+  const res = await fetch("/api/leaderboard/reports", { headers: { Authorization: "Basic " + auth.token } });
+  if (res.ok) return "";
+  let detail = "";
+  try { detail = (await res.json()).detail; } catch {}
+  return res.status === 401 ? "Wrong username or password." : (detail || `Server returned ${res.status}`);
+}
+
+$("login-form").onsubmit = async e => {
+  e.preventDefault();
   auth.set($("login-user").value.trim(), $("login-pass").value);
+  const problem = await checkAdmin();
+  if (problem) {
+    auth.clear();
+    $("login-error").textContent = problem;
+    $("login-pass").select();
+    return;
+  }
   renderAuth();
   loginDialog.close("ok");
   // Hidden boards and runs are only listed for the admin.
@@ -323,10 +342,17 @@ $("login-form").onsubmit = () => {
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
 $("auth-btn").onclick = () => {
-  if (auth.token) { auth.clear(); renderAuth(); loadCourses(currentCourse?.id); } else promptLogin();
+  if (!auth.token) { promptLogin(); return; }
+  auth.clear();
+  renderAuth();
+  // Hiding the admin panels is not enough; what they loaded has to go too.
+  $("report-list").innerHTML = "";
+  $("ta-laps").innerHTML = "";
+  loadCourses(currentCourse?.id);
 };
 function renderAuth() {
   $("auth-btn").textContent = auth.token ? `Sign out (${auth.user})` : "Sign in";
+  document.body.classList.toggle("admin", !!auth.token);
 }
 renderAuth();
 
@@ -408,9 +434,23 @@ async function loadCourses(selectId) {
       const idx = courses.indexOf(course);
       $("course-list").children[idx]?.classList.add("selected");
       selectCourse(course);
+    } else {
+      clearCourse();
     }
   }
   return courses;
+}
+
+function clearCourse() {
+  currentCourse = null;
+  cancelRunEdit();
+  $("course-form").style.display = "none";
+  $("owner-form").style.display = "none";
+  $("lb-title").textContent = "No course selected";
+  $("lb-course-actions").style.display = "none";
+  $("lb-table").querySelector("tbody").innerHTML =
+    "<tr><td colspan='12' class='muted'>Select a course on the left.</td></tr>";
+  $("lb-json").textContent = "(nothing yet)";
 }
 
 async function selectCourse(course) {
@@ -457,9 +497,9 @@ function renderRuns(runs) {
       <td class="num">${r.top_speed_mph ?? ""}</td>
       <td class="num">${r.avg_speed_mph ?? ""}</td>
       <td>${esc(r.run_date ?? "")}</td>
-      <td class="hide-cell"><input type="checkbox" data-act="hide" title="Hide this run from the app"${r.hidden ? " checked" : ""}></td>
-      <td><button class="btn" data-act="edit">Edit</button></td>
-      <td><button class="btn danger" data-act="del">Delete</button></td>`;
+      <td class="hide-cell admin-only"><input type="checkbox" data-act="hide" title="Hide this run from the app"${r.hidden ? " checked" : ""}></td>
+      <td class="admin-only"><button class="btn" data-act="edit">Edit</button></td>
+      <td class="admin-only"><button class="btn danger" data-act="del">Delete</button></td>`;
     tr.onclick = () => showJSON(r);
     tr.querySelector("[data-act=edit]").onclick = e => { e.stopPropagation(); startRunEdit(r); };
     const hideBox = tr.querySelector("[data-act=hide]");
@@ -599,12 +639,7 @@ $("owner-form").onsubmit = async e => {
 armConfirm($("course-del-btn"), async () => {
   if (!currentCourse) return;
   await api(`/api/leaderboard/courses/${currentCourse.id}`, { method: "DELETE" });
-  currentCourse = null;
-  cancelRunEdit();
-  $("lb-title").textContent = "No course selected";
-  $("lb-course-actions").style.display = "none";
-  $("lb-table").querySelector("tbody").innerHTML =
-    "<tr><td colspan='12' class='muted'>Select a course on the left.</td></tr>";
+  clearCourse();
   loadCourses();
 });
 
@@ -719,7 +754,12 @@ async function loadGglcEvent(date) {
   });
 }
 
-loadCourses();
+// A saved login is checked before the first request, so a stale one signs
+// out quietly instead of greeting the visitor with a password prompt.
+checkAdmin().catch(() => "").then(problem => {
+  if (problem) { auth.clear(); renderAuth(); }
+  loadCourses();
+});
 </script>
 </body>
 </html>
