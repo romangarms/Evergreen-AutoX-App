@@ -147,16 +147,24 @@ Answer "Yes" to user-generated content. No other content flags apply.
 
 ### Screenshots
 
-Required: one iPhone 6.9" set, 1320 × 2868 (iPhone 17 Pro Max simulator); smaller sizes are scaled from
-it. No iPad set, since the app is iPhone-only. The PNGs in `screenshots/` are 1206 × 2622 and predate
-leaderboards, so they need re-shooting. Suggested order:
+Required: one iPhone 6.9" set, 1320 × 2868 (Pro Max simulator); smaller sizes are scaled from it. No iPad
+set, since the app is iPhone-only. The current set is `screenshots/appstore-6.9/`, numbered in upload order,
+with a 1284 × 2778 copy in `screenshots/appstore-6.5/` for the 6.5" slot. The loose PNGs in `screenshots/`
+are 1206 × 2622 and predate leaderboards. Order:
 
 1. Live results list with the ME car and a few stars
 2. Driver detail (run-by-run)
 3. Friends with gaps
 4. Head-to-head compare chart
 5. Community leaderboard
-6. Events list
+6. Leaderboard driver (run history)
+7. Events list
+8. GGLC driver detail (official best, optional)
 
 Shoot with an event whose entries are car descriptions rather than people's names, and with leaderboards
-that are clearly closed-course.
+that are clearly closed-course. Every screen that singles someone out must single out the developer, never
+another entrant: the 2026-09-21 set used the 2026-08-09 Speedhive event (ME #44, pins 44, 13, 72, 41, 23:
+the developer's car and friends), the developer's own page from the 2026-04-19 GGLC event (car 186), and,
+for the leaderboards, a local server on a scratch DB seeded with a fictional closed-course board where the
+opened entry is "Roman" and every other driver is made-up initials. PNGs must have no alpha channel or App
+Store Connect rejects them.
