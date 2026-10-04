@@ -239,6 +239,32 @@ struct TAParsedLog: Decodable {
     let laps: [TALap]
 }
 
+struct AccelEntry: Decodable, Identifiable {
+    let id: Int
+    let year: Int?
+    let vehicle: String
+    let driver: String?
+    let hp: Int?
+    let weightLb: Int?
+    let zeroTo30: Double?
+    let zeroTo60: Double?
+    let quarterMileSeconds: Double?
+    let quarterMileMph: Double?
+    let eighthMileSeconds: Double?
+    let eighthMileMph: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, year, vehicle, driver, hp
+        case weightLb = "weight_lb"
+        case zeroTo30 = "zero_to_30_seconds"
+        case zeroTo60 = "zero_to_60_seconds"
+        case quarterMileSeconds = "quarter_mile_seconds"
+        case quarterMileMph = "quarter_mile_mph"
+        case eighthMileSeconds = "eighth_mile_seconds"
+        case eighthMileMph = "eighth_mile_mph"
+    }
+}
+
 struct LBCourseDetail: Codable {
     let course: LBCourse
     let runs: [LBRun]

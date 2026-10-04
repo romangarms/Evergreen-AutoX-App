@@ -121,6 +121,7 @@
   <h1>AutoX Live <span>dev console</span></h1>
   <nav>
     <button data-tab="leaderboard" class="active">Leaderboard</button>
+    <button data-tab="acceleration">Acceleration</button>
     <button data-tab="speedhive">Speedhive</button>
     <button data-tab="gglc">GGLC</button>
   </nav>
@@ -158,6 +159,7 @@
           <label class="field">distance mi <input id="course-dist" type="number" step="any" class="w-sm"></label>
           <label class="field">legacy dist mi <input id="course-legacy-dist" type="number" step="any" class="w-sm"></label>
           <label class="field">description <input id="course-desc" class="w-lg"></label>
+          <label class="field">region <input id="course-region" class="w-sm" placeholder="CA"></label>
           <div class="actions">
             <button class="btn primary" type="submit" id="course-save-btn">Save</button>
             <button class="btn" type="button" id="course-cancel-btn">Cancel</button>
@@ -240,6 +242,51 @@
   </div>
 </section>
 
+<section id="tab-acceleration" class="tab">
+  <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Acceleration board</h2>
+      <button class="btn" id="accel-load-btn">Reload</button>
+    </div>
+    <div class="table-scroll" style="margin-top:0.5rem">
+      <table id="accel-table">
+        <thead><tr>
+          <th class="num">#</th><th class="num">Year</th><th>Vehicle</th><th>Driver</th>
+          <th class="num">HP</th><th class="num">Weight</th><th class="num">0-30</th><th class="num">0-60</th>
+          <th class="num">1/4 s</th><th class="num">1/4 mph</th><th class="num">1/8 s</th><th class="num">1/8 mph</th>
+          <th class="admin-only">Hidden</th><th class="admin-only"></th><th class="admin-only"></th>
+        </tr></thead>
+        <tbody><tr><td colspan="15" class="muted">(open the tab to load)</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="panel admin-only" style="margin-top:1rem">
+    <h2 id="accel-form-title">Add entry</h2>
+    <form id="accel-form" class="form-grid">
+      <label class="field">year <input id="accel-year" type="number" class="w-sm"></label>
+      <label class="field">vehicle <input id="accel-vehicle" class="w-lg" required></label>
+      <label class="field">driver <input id="accel-driver" class="w-sm"></label>
+      <label class="field">hp <input id="accel-hp" type="number" class="w-sm"></label>
+      <label class="field">weight lb <input id="accel-weight" type="number" class="w-sm"></label>
+      <label class="field">0-30 s <input id="accel-30" type="number" step="any" class="w-sm"></label>
+      <label class="field">0-60 s <input id="accel-60" type="number" step="any" class="w-sm"></label>
+      <label class="field">1/4 s <input id="accel-q-time" type="number" step="any" class="w-sm"></label>
+      <label class="field">1/4 mph <input id="accel-q-speed" type="number" step="any" class="w-sm"></label>
+      <label class="field">1/8 s <input id="accel-e-time" type="number" step="any" class="w-sm"></label>
+      <label class="field">1/8 mph <input id="accel-e-speed" type="number" step="any" class="w-sm"></label>
+      <label class="field">notes <input id="accel-notes" class="w-lg"></label>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="accel-save-btn">Add entry</button>
+        <button class="btn" type="button" id="accel-cancel-btn" style="display:none">Cancel edit</button>
+      </div>
+    </form>
+  </div>
+  <details class="json" style="margin-top:1rem">
+    <summary>Last response JSON</summary>
+    <pre id="accel-json">(nothing yet)</pre>
+  </details>
+</section>
+
 <section id="tab-speedhive" class="tab">
   <div class="panel">
     <div class="row">
@@ -287,6 +334,7 @@ document.querySelectorAll("nav button").forEach(btn => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     btn.classList.add("active");
     $("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "acceleration") loadAcceleration();
   };
 });
 
@@ -339,6 +387,7 @@ $("login-form").onsubmit = async e => {
   loginDialog.close("ok");
   // Hidden boards and runs are only listed for the admin.
   loadCourses(currentCourse?.id);
+  resetAcceleration();
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
 $("auth-btn").onclick = () => {
@@ -349,6 +398,7 @@ $("auth-btn").onclick = () => {
   $("report-list").innerHTML = "";
   $("ta-laps").innerHTML = "";
   loadCourses(currentCourse?.id);
+  resetAcceleration();
 };
 function renderAuth() {
   $("auth-btn").textContent = auth.token ? `Sign out (${auth.user})` : "Sign in";
@@ -426,7 +476,7 @@ const showJSON = data => { $("lb-json").textContent = JSON.stringify(data, null,
 async function loadCourses(selectId) {
   const courses = await api("/api/leaderboard/courses");
   fillList($("course-list"), courses,
-    c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}<br><span class="sub">#${c.id} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
+    c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}<br><span class="sub">#${c.id}${c.region ? " · " + esc(c.region) : ""} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
@@ -467,6 +517,7 @@ async function refreshLeaderboard() {
   showJSON(data);
   $("lb-title").textContent = data.course.name;
   const meta = [`${data.runs.length} runs`];
+  if (data.course.region) meta.push(data.course.region);
   if (data.course.distance_miles) meta.push(`${data.course.distance_miles} mi`);
   if (data.course.legacy_distance_miles) meta.push(`legacy ${data.course.legacy_distance_miles} mi`);
   if (data.course.created_by) meta.push(`by ${data.course.created_by}`);
@@ -589,6 +640,7 @@ $("course-new-btn").onclick = () => {
   $("course-dist").value = "";
   $("course-legacy-dist").value = "";
   $("course-desc").value = "";
+  $("course-region").value = "";
   $("course-name").focus();
 };
 $("course-edit-btn").onclick = () => {
@@ -599,6 +651,7 @@ $("course-edit-btn").onclick = () => {
   $("course-dist").value = currentCourse.distance_miles ?? "";
   $("course-legacy-dist").value = currentCourse.legacy_distance_miles ?? "";
   $("course-desc").value = currentCourse.description ?? "";
+  $("course-region").value = currentCourse.region ?? "";
   $("course-name").focus();
 };
 $("course-cancel-btn").onclick = () => { $("course-form").style.display = "none"; };
@@ -610,6 +663,7 @@ $("course-form").onsubmit = async e => {
     distance_miles: $("course-dist").value ? Number($("course-dist").value) : null,
     legacy_distance_miles: $("course-legacy-dist").value ? Number($("course-legacy-dist").value) : null,
     description: $("course-desc").value || null,
+    region: $("course-region").value || null,
   };
   const result = editingCourse
     ? await apiJSON(`/api/leaderboard/courses/${currentCourse.id}`, "PATCH", body)
@@ -732,6 +786,108 @@ async function loadDrivers(session) {
       $("sh-json").textContent = JSON.stringify(data, null, 2);
     });
 }
+
+// ---------- Acceleration ----------
+let editingAccelId = null;
+const accelInputs = {
+  year: "accel-year", vehicle: "accel-vehicle", driver: "accel-driver", hp: "accel-hp",
+  weight_lb: "accel-weight", zero_to_30_seconds: "accel-30", zero_to_60_seconds: "accel-60",
+  quarter_mile_seconds: "accel-q-time", quarter_mile_mph: "accel-q-speed",
+  eighth_mile_seconds: "accel-e-time", eighth_mile_mph: "accel-e-speed", notes: "accel-notes",
+};
+const showAccelJSON = data => { $("accel-json").textContent = JSON.stringify(data, null, 2); };
+
+async function loadAcceleration() {
+  const entries = await api("/api/acceleration");
+  const tbody = $("accel-table").querySelector("tbody");
+  tbody.innerHTML = "";
+  if (!entries.length) {
+    tbody.innerHTML = "<tr><td colspan='15' class='muted'>No entries yet.</td></tr>";
+    return;
+  }
+  entries.forEach((a, i) => {
+    const tr = document.createElement("tr");
+    tr.className = "clickable" + (a.id === editingAccelId ? " editing" : "") + (a.hidden ? " is-hidden" : "");
+    tr.innerHTML = `
+      <td class="num">${i + 1}</td>
+      <td class="num">${a.year ?? ""}</td>
+      <td>${esc(a.vehicle)}${a.source !== "manual" ? `<span class="badge">${esc(a.source)}</span>` : ""}</td>
+      <td>${esc(a.driver ?? "")}</td>
+      <td class="num">${a.hp ?? ""}</td>
+      <td class="num">${a.weight_lb ?? ""}</td>
+      <td class="num">${a.zero_to_30_seconds ?? ""}</td>
+      <td class="num"><strong>${a.zero_to_60_seconds ?? ""}</strong></td>
+      <td class="num">${a.quarter_mile_seconds ?? ""}</td>
+      <td class="num">${a.quarter_mile_mph ?? ""}</td>
+      <td class="num">${a.eighth_mile_seconds ?? ""}</td>
+      <td class="num">${a.eighth_mile_mph ?? ""}</td>
+      <td class="hide-cell admin-only"><input type="checkbox" data-act="hide" title="Hide this entry from the app"${a.hidden ? " checked" : ""}></td>
+      <td class="admin-only"><button class="btn" data-act="edit">Edit</button></td>
+      <td class="admin-only"><button class="btn danger" data-act="del">Delete</button></td>`;
+    tr.onclick = () => showAccelJSON(a);
+    tr.querySelector("[data-act=edit]").onclick = e => { e.stopPropagation(); startAccelEdit(a); };
+    const hideBox = tr.querySelector("[data-act=hide]");
+    hideBox.onclick = e => e.stopPropagation();
+    hideBox.onchange = async () => {
+      try {
+        showAccelJSON(await apiJSON(`/api/acceleration/${a.id}`, "PATCH", { hidden: hideBox.checked }));
+      } catch {
+        hideBox.checked = !hideBox.checked;
+        return;
+      }
+      loadAcceleration();
+    };
+    const delBtn = tr.querySelector("[data-act=del]");
+    delBtn.onclick = e => e.stopPropagation();
+    armConfirm(delBtn, async () => {
+      await api(`/api/acceleration/${a.id}`, { method: "DELETE" });
+      if (editingAccelId === a.id) cancelAccelEdit();
+      loadAcceleration();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function startAccelEdit(a) {
+  editingAccelId = a.id;
+  $("accel-form-title").textContent = `Edit entry #${a.id} — ${a.vehicle}`;
+  $("accel-save-btn").textContent = "Save changes";
+  $("accel-cancel-btn").style.display = "";
+  for (const [key, id] of Object.entries(accelInputs)) $(id).value = a[key] ?? "";
+  loadAcceleration();
+  $("accel-form").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelAccelEdit() {
+  editingAccelId = null;
+  $("accel-form-title").textContent = "Add entry";
+  $("accel-save-btn").textContent = "Add entry";
+  $("accel-cancel-btn").style.display = "none";
+  $("accel-form").reset();
+}
+
+function resetAcceleration() {
+  cancelAccelEdit();
+  $("accel-json").textContent = "(nothing yet)";
+  if ($("tab-acceleration").classList.contains("active")) loadAcceleration();
+  else $("accel-table").querySelector("tbody").innerHTML = "";
+}
+
+$("accel-load-btn").onclick = loadAcceleration;
+$("accel-cancel-btn").onclick = () => { cancelAccelEdit(); loadAcceleration(); };
+$("accel-form").onsubmit = async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(Object.entries(accelInputs).map(([key, id]) => {
+    const input = $(id);
+    if (!input.value) return [key, null];
+    return [key, input.type === "number" ? Number(input.value) : input.value];
+  }));
+  showAccelJSON(editingAccelId
+    ? await apiJSON(`/api/acceleration/${editingAccelId}`, "PATCH", body)
+    : await apiJSON("/api/acceleration", "POST", body));
+  cancelAccelEdit();
+  loadAcceleration();
+};
 
 // ---------- GGLC ----------
 $("gglc-list-btn").onclick = async () => {

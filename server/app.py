@@ -213,6 +213,7 @@ LongStr = Annotated[str | None, Field(max_length=500)]
 Miles = Annotated[float | None, Field(gt=0, le=100)]
 Horsepower = Annotated[int | None, Field(ge=0, le=5000)]
 Speed = Annotated[float | None, Field(ge=0, le=400)]
+Seconds = Annotated[float | None, Field(gt=0, le=600)]
 
 
 class CourseIn(BaseModel):
@@ -221,6 +222,7 @@ class CourseIn(BaseModel):
     legacy_distance_miles: Miles = None
     description: LongStr = None
     created_by: ShortStr = None
+    region: ShortStr = None
 
 
 class CourseUpdate(BaseModel):
@@ -228,6 +230,7 @@ class CourseUpdate(BaseModel):
     distance_miles: Miles = None
     legacy_distance_miles: Miles = None
     description: LongStr = None
+    region: ShortStr = None
 
 
 class CourseOwnerIn(BaseModel):
@@ -266,6 +269,28 @@ class RunUpdate(BaseModel):
     legacy: bool | None = None
     notes: LongStr = None
     source: Annotated[str | None, Field(max_length=40)] = None
+
+
+class AccelerationIn(BaseModel):
+    vehicle: NameStr
+    year: Annotated[int | None, Field(ge=1880, le=2100)] = None
+    driver: ShortStr = None
+    hp: Horsepower = None
+    weight_lb: Annotated[int | None, Field(gt=0, le=200000)] = None
+    zero_to_30_seconds: Seconds = None
+    zero_to_60_seconds: Seconds = None
+    quarter_mile_seconds: Seconds = None
+    quarter_mile_mph: Speed = None
+    eighth_mile_seconds: Seconds = None
+    eighth_mile_mph: Speed = None
+    notes: LongStr = None
+    source: Annotated[str, Field(max_length=40)] = "manual"
+
+
+class AccelerationUpdate(AccelerationIn):
+    vehicle: NameStr | None = None
+    source: Annotated[str | None, Field(max_length=40)] = None
+    hidden: bool | None = None
 
 
 class ReportIn(BaseModel):
@@ -319,6 +344,16 @@ def _reject_duplicate_name(conn, name: str, exclude_id: int | None = None) -> No
         )
 
 
+# Region is how the boards are grouped for display, so only an admin assigns it.
+def _clean_region(region: str | None, actor: Actor) -> str | None:
+    region = _clean(region)
+    if region is not None and not actor.is_admin:
+        raise HTTPException(
+            status_code=403, detail="Only an admin can set a leaderboard's region"
+        )
+    return region.upper() if region else None
+
+
 def _owns(row, actor: Actor) -> bool:
     return row["owner_id"] is not None and row["owner_id"] == actor.device_id
 
@@ -340,12 +375,13 @@ def _require_run_owner(run, course, actor: Actor) -> None:
 
 
 @app.get("/api/leaderboard/courses")
-def list_courses(actor: ActorDep):
+def list_courses(actor: ActorDep, region: str | None = None):
     with db.session() as conn:
         return [
             db.course_to_dict(row, actor.device_id)
             for row in conn.execute("SELECT * FROM courses ORDER BY id")
-            if actor.is_admin or not row["hidden"]
+            if (actor.is_admin or not row["hidden"])
+            and (region is None or (row["region"] or "") == region.strip().upper())
         ]
 
 
@@ -354,6 +390,7 @@ def create_course(course: CourseIn, actor: WriterDep):
     name = _clean(course.name)
     if not name:
         raise HTTPException(status_code=400, detail="Name cannot be blank")
+    region = _clean_region(course.region, actor)
     with db.session() as conn:
         if actor.device_id is not None:
             owned = conn.execute(
@@ -368,8 +405,8 @@ def create_course(course: CourseIn, actor: WriterDep):
         try:
             cur = conn.execute(
                 """INSERT INTO courses (name, distance_miles, legacy_distance_miles,
-                    description, owner_id, created_by, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, datetime('now'))""",
+                    description, owner_id, created_by, created_at, region)
+                   VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)""",
                 (
                     name,
                     course.distance_miles,
@@ -377,6 +414,7 @@ def create_course(course: CourseIn, actor: WriterDep):
                     _clean(course.description),
                     actor.device_id,
                     _clean(course.created_by),
+                    region,
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -396,6 +434,12 @@ def update_course(course_id: int, update: CourseUpdate, actor: WriterDep):
             fields[key] = _clean(fields[key])
     if fields.get("name", "x") is None:
         raise HTTPException(status_code=400, detail="Name cannot be blank")
+    if "region" in fields:
+        if not actor.is_admin:
+            raise HTTPException(
+                status_code=403, detail="Only an admin can set a leaderboard's region"
+            )
+        fields["region"] = _clean_region(fields["region"], actor)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     with db.session() as conn:
@@ -598,6 +642,81 @@ def delete_report(report_id: int, _: AdminDep):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"Report {report_id} not found")
         return {"deleted": report_id}
+
+
+ACCELERATION_TEXT_FIELDS = ("vehicle", "driver", "notes")
+
+
+def _get_acceleration(conn, entry_id: int, actor: Actor):
+    entry = conn.execute(
+        "SELECT * FROM acceleration_entries WHERE id = ?", (entry_id,)
+    ).fetchone()
+    if entry is None or (entry["hidden"] and not actor.is_admin):
+        raise HTTPException(
+            status_code=404, detail=f"Acceleration entry {entry_id} not found"
+        )
+    return entry
+
+
+@app.get("/api/acceleration")
+def list_acceleration(actor: ActorDep):
+    with db.session() as conn:
+        entries = [
+            db.acceleration_to_dict(row)
+            for row in conn.execute("SELECT * FROM acceleration_entries")
+            if actor.is_admin or not row["hidden"]
+        ]
+    entries.sort(key=db.acceleration_sort_key)
+    return entries
+
+
+@app.post("/api/acceleration", status_code=201)
+def create_acceleration(entry: AccelerationIn, admin: AdminDep):
+    fields = entry.model_dump()
+    for key in ACCELERATION_TEXT_FIELDS:
+        fields[key] = _clean(fields[key])
+    if not fields["vehicle"]:
+        raise HTTPException(status_code=400, detail="Vehicle cannot be blank")
+    with db.session() as conn:
+        cur = conn.execute(
+            f"""INSERT INTO acceleration_entries ({", ".join(fields)})
+                VALUES ({", ".join("?" for _ in fields)})""",
+            tuple(fields.values()),
+        )
+        return db.acceleration_to_dict(_get_acceleration(conn, cur.lastrowid, admin))
+
+
+@app.patch("/api/acceleration/{entry_id}")
+def update_acceleration(entry_id: int, update: AccelerationUpdate, admin: AdminDep):
+    fields = update.model_dump(exclude_unset=True)
+    for key in ACCELERATION_TEXT_FIELDS:
+        if key in fields:
+            fields[key] = _clean(fields[key])
+    if fields.get("vehicle", "x") is None:
+        raise HTTPException(status_code=400, detail="Vehicle cannot be blank")
+    for key in ("source", "hidden"):
+        if key in fields and fields[key] is None:
+            del fields[key]
+    if "hidden" in fields:
+        fields["hidden"] = int(fields["hidden"])
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    with db.session() as conn:
+        _get_acceleration(conn, entry_id, admin)
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        conn.execute(
+            f"UPDATE acceleration_entries SET {assignments} WHERE id = ?",
+            (*fields.values(), entry_id),
+        )
+        return db.acceleration_to_dict(_get_acceleration(conn, entry_id, admin))
+
+
+@app.delete("/api/acceleration/{entry_id}")
+def delete_acceleration(entry_id: int, admin: AdminDep):
+    with db.session() as conn:
+        _get_acceleration(conn, entry_id, admin)
+        conn.execute("DELETE FROM acceleration_entries WHERE id = ?", (entry_id,))
+        return {"deleted": entry_id}
 
 
 @app.post("/api/trackaddict/parse")

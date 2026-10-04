@@ -33,7 +33,7 @@ struct EventsView: View {
                 LazyVStack(spacing: 0) {
                     if model.events.isEmpty {
                         StatusView()
-                    } else if sections.allSatisfy(\.events.isEmpty) {
+                    } else if visibleSections.isEmpty {
                         Text("No events match \"\(query)\".")
                             .font(.system(size: 12))
                             .foregroundStyle(Color.egGrayDark)
@@ -73,7 +73,7 @@ struct EventsView: View {
     // The leaderboards section stays visible when empty so the button to
     // create one is always reachable.
     private var visibleSections: [SourceSection] {
-        sections.filter { !$0.events.isEmpty || ($0.source == .leaderboard && !isSearching) }
+        sections.filter { !$0.events.isEmpty || ($0.source == .leaderboard && showsAcceleration) }
     }
 
     // Searching looks through everything; the toggle only shapes browsing.
@@ -115,9 +115,10 @@ struct EventsView: View {
                     .font(.system(size: 12, weight: .heavy))
                     .kerning(1.1)
                     .foregroundStyle(Color.egInk)
+                    .fixedSize()
                 if section.source == .speedhive, !isSearching, model.hasSpeedhiveAutoXEvents {
                     autoXToggle
-                } else if let detail = sectionDetail(section.source) {
+                } else if let detail = sectionDetail(section.source), !(section.source == .leaderboard && expandable) {
                     Text(detail)
                         .font(.system(size: 10.5))
                         .foregroundStyle(Color.egGray)
@@ -148,6 +149,7 @@ struct EventsView: View {
                     } label: {
                         HStack(spacing: 5) {
                             Text(expanded ? "SHOW LESS" : "SHOW ALL \(section.events.count)")
+                                .fixedSize()
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 9, weight: .heavy))
                         }
@@ -159,13 +161,17 @@ struct EventsView: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
 
-            if section.source == .leaderboard, section.events.isEmpty {
+            if section.source == .leaderboard, section.events.isEmpty, !isSearching {
                 Text("No leaderboards yet. Tap NEW to start one for your course.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.egGrayDark)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+            }
+
+            if section.source == .leaderboard, showsAcceleration {
+                accelerationRow
             }
 
             ForEach(rows(section)) { row in
@@ -184,6 +190,37 @@ struct EventsView: View {
                 }
             }
         }
+    }
+
+    private var showsAcceleration: Bool {
+        !isSearching || "Acceleration".localizedCaseInsensitiveContains(query)
+    }
+
+    private var accelerationRow: some View {
+        Button {
+            model.open(screen: .acceleration)
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Acceleration")
+                        .font(.system(size: 13.5, weight: .heavy))
+                    Text("0–60, 0–30 and drag strip times")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.egGray)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
+            }
+            .foregroundStyle(Color.egInk)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .overlay(alignment: .top) {
+                Color.egHairline.frame(height: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private func sectionDetail(_ source: EventSource) -> String? {

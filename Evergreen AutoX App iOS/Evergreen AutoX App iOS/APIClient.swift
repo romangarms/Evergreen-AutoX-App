@@ -61,6 +61,10 @@ struct APIClient {
         try await get("api/leaderboard/courses/\(id)")
     }
 
+    func acceleration() async throws -> [AccelEntry] {
+        try await get("api/acceleration")
+    }
+
     func createCourse(_ input: LBCourseInput) async throws -> LBCourse {
         try await send("api/leaderboard/courses", method: "POST", json: input)
     }

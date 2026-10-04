@@ -1,6 +1,8 @@
-"""One-shot import of the 'HWY 9 Leaderboard' Google Sheet into leaderboard.db.
+"""One-shot import of the leaderboard Google Sheets into leaderboard.db: the
+'HWY 9 Leaderboard' (CA), the Cannonball and Disco sheets (WA), and the
+acceleration sheet.
 
-Safe to re-run: existing courses and runs are left untouched.
+Safe to re-run: existing courses, runs and acceleration entries are left untouched.
 """
 
 import db
@@ -9,11 +11,31 @@ SKIDPAD = {
     "name": "Skidpad to 4 Corners Uphill",
     "distance_miles": 1.65,
     "legacy_distance_miles": 1.7,
+    "region": "CA",
 }
 INTRO = {
     "name": "Intro to 9",
     "distance_miles": None,
     "legacy_distance_miles": None,
+    "region": "CA",
+}
+CANNONBALL_NORTH = {
+    "name": "Cannonball North",
+    "distance_miles": 79,
+    "legacy_distance_miles": None,
+    "region": "WA",
+}
+CANNONBALL_SOUTH = {
+    "name": "Cannonball South",
+    "distance_miles": 79,
+    "legacy_distance_miles": None,
+    "region": "WA",
+}
+DISCO = {
+    "name": "Disco Run",
+    "distance_miles": None,
+    "legacy_distance_miles": None,
+    "region": "WA",
 }
 
 SKIDPAD_RUNS = [
@@ -394,6 +416,185 @@ INTRO_RUNS = [
     ),
 ]
 
+# time, vehicle, top speed, start time, driver, date, conditions, notes
+CANNONBALL_NORTH_RUNS = [
+    (
+        "0:53:28",
+        "2006 Honda Odyssey",
+        118,
+        "11:59 PM",
+        "DP",
+        "10/15/23",
+        "Dark",
+        "Speed limiter",
+    ),
+    ("0:56:38", "2016 Subaru Outback", 124, "10:00 PM", "GK", "7/2/24", "Dark", None),
+    ("0:58:26", "2011 Audi A4", 143, "7:00 PM", "RG", "7/25/23", "Day", None),
+    (
+        "0:58:28",
+        "2016 Ford Fiesta",
+        120,
+        "7:00 PM",
+        "TN",
+        "7/25/23",
+        "Day",
+        "Speed limiter",
+    ),
+    ("1:04:19", "2015 Mazda 3", 121, "10:00 PM", "RG", "8/12/23", "Dark", None),
+    ("1:04:38", "2016 Ford Fiesta", 115, "10:00 PM", "TN", "8/12/23", "Dark", None),
+    ("1:05:09", "2016 Subaru Outback", 88, "6:00 PM", "GK", "9/21/23", "Day", None),
+    (
+        "1:14:11",
+        "2013 Toyota Highlander",
+        110,
+        "6:45 PM",
+        "RG",
+        "3/23/24",
+        "Day",
+        "Speed limiter",
+    ),
+    ("2:23:00", "Amtrak train", 48, "7:47", "GK", "9/29/23", "Day", None),
+]
+
+# Same columns as CANNONBALL_NORTH_RUNS.
+CANNONBALL_SOUTH_RUNS = [
+    (
+        "1:00:50",
+        "2006 Honda Odyssey",
+        118,
+        "12:00 PM",
+        "DP",
+        "10/15/23",
+        "Day",
+        "Speed limiter",
+    ),
+    (
+        "1:01:22",
+        "2016 Ford Fiesta",
+        120,
+        "5:00 PM",
+        "TN",
+        "9/16/23",
+        "Day",
+        "Speed limiter",
+    ),
+    (
+        "1:01:50",
+        "2015 Mazda 3",
+        129,
+        "5:00 PM",
+        "RG",
+        "9/16/23",
+        "Day",
+        "Speed limiter",
+    ),
+    ("1:02:00", "1999 Mazda Miata", 120, "5:00 PM", "IS", "9/16/23", "Day", None),
+    ("1:02:10", "2016 Ford Fiesta", 100, "1:00 PM", "TN", "1/14/24", "Day", None),
+    (
+        "1:02:40",
+        "2006 Toyota Camry",
+        125,
+        "12:00 PM",
+        "TT",
+        "11/1/23",
+        "Day",
+        "Speed limiter",
+    ),
+    ("1:03:32", "2011 Mini Cooper S", 115, "12:00 PM", "LD", "11/1/23", "Day", None),
+    ("1:05:00", "2016 Jeep Grand Cherokee", 85, "9:30 AM", "TN", "8/2/23", "Day", None),
+    (
+        "1:07:04",
+        "2019 Nissan Leaf",
+        98,
+        "9:40 AM",
+        "HC",
+        "8/31/23",
+        "Day",
+        "Speed limiter",
+    ),
+    ("1:09:21", "1988 Pontiac Firebird", 105, "10:00 AM", "GK", "2/20/24", "Day", None),
+    ("1:11:16", "2016 Subaru Outback", 88, "1:00 PM", "GK", "9/21/23", "Day", None),
+    (
+        "1:11:49",
+        "2013 Toyota Highlander",
+        105,
+        "12:30 PM",
+        "RG",
+        "3/23/24",
+        "Day",
+        None,
+    ),
+    ("1:18:30", "1988 Pontiac Firebird", 85, "8:10 PM", "GK", "3/2/24", "Dark", None),
+    ("1:29:19", "2011 Audi A4", 138, "3:00 PM", "RG", "7/25/23", "Day", None),
+    ("1:29:19", "2016 Ford Fiesta", 110, "3:00 PM", "TN", "7/25/23", "Day", None),
+    (
+        "16:21:00",
+        "bicycle, amtrack, afroman?",
+        50,
+        "6:17 PM",
+        "GK",
+        "10/1/23",
+        "Day",
+        None,
+    ),
+]
+
+# time, vehicle, driver, date, direction
+DISCO_RUNS = [
+    ("1:24.4", "2016 Ford Fiesta", "TN", "11/15/23", "Downhill"),
+    ("1:31.0", "2011 Mini Cooper S", "LD", "11/16/23", "Downhill"),
+    ("2:04.02", "2006 Honda Odyssey", "DP", "1/1/24", None),
+]
+
+# year, vehicle, driver, hp, weight, 0-30, 0-60, 1/4 time, 1/4 mph, 1/8 time, 1/8 mph
+ACCELERATION = [
+    (2001, "C5 Corvette", "JH", 345, 3200, None, 4.8, 11.983, 95.9, None, None),
+    (
+        2023,
+        "Mazda 3 Turbo (tuned)",
+        "RG",
+        280,
+        3400,
+        1.77,
+        5.2,
+        None,
+        None,
+        8.813,
+        80.6,
+    ),
+    (2023, "Mazda 3 Turbo", "RG", 250, 3400, 1.83, 5.5, 14.4905, 95.15, 8.997, 77.6),
+    (2007, "BMW Z4M", "RG", 350, 3200, 3.24, 5.8, None, None, 8.46, 78.6),
+    (2000, "Camaro Z28", "JH", 305, 3500, None, 6.3, None, None, 9.21, 66.6),
+    (2007, "BMW 328i", "TN", 240, 3400, None, 6.65, 14.58, 96.05, 9.5665, 75.55),
+    (
+        1963,
+        "Austin Healy 3000 MKII",
+        "IB",
+        271,
+        None,
+        2.75,
+        7.09,
+        None,
+        None,
+        None,
+        None,
+    ),
+    (2015, "Mazda 3 (tuned)", "RG", 205, 3000, 3.34, 7.2, None, None, None, None),
+    (1988, "Pontiac Firebird", "RG", 200, 3400, 3.37, 7.8, None, None, 10.017, 70.7),
+    (2025, "Chevy Malibu", "RG", 175, 3100, 2.95, 8.1, None, None, None, None),
+    (2015, "Mazda 3", "RG", 185, 3000, 3.5, 8.2, None, None, None, None),
+    (2010, "Subaru Impreza", "KJ", 170, None, 3.4, 8.8, None, None, None, None),
+    (1996, "Mazda Miata", "IB", 131, None, 2.99, 8.99, None, None, None, None),
+    (2006, "Toyota Camry", "TE", 154, None, 4.15, 9.8, None, None, None, None),
+    (2006, "Honda Odyssey", "DP", 244, None, 4, 9.83, None, None, None, None),
+    (2013, "Mini Clubman", "SH", 120, None, 3.45, 10.5, None, None, None, None),
+    (2016, "Subaru Outback", "GK", 182, None, 4.42, 10.69, None, None, None, None),
+    (2004, "Nissan Xterra 4x4", "RG", 180, 4200, 4.24, 12.3, 18.44, 73, 11.849, 59),
+    (1996, "Toyota Tacoma", "IB", 150, None, 5.09, 12.6, None, None, None, None),
+    (1990, "Avon Supersport Boat", "TN", 30, None, 7.6, None, None, None, None, None),
+    (2023, "Tweaker Bike 2", None, 2, None, None, None, None, None, None, None),
+]
+
 
 def iso_date(us_date: str) -> str:
     month, day, year = us_date.split("/")
@@ -405,10 +606,20 @@ def ensure_course(conn, course: dict) -> int:
         "SELECT id FROM courses WHERE name = ?", (course["name"],)
     ).fetchone()
     if row:
+        conn.execute(
+            "UPDATE courses SET region = ? WHERE id = ? AND region IS NULL",
+            (course["region"], row["id"]),
+        )
         return row["id"]
     cur = conn.execute(
-        "INSERT INTO courses (name, distance_miles, legacy_distance_miles) VALUES (?, ?, ?)",
-        (course["name"], course["distance_miles"], course["legacy_distance_miles"]),
+        """INSERT INTO courses (name, distance_miles, legacy_distance_miles, region)
+           VALUES (?, ?, ?, ?)""",
+        (
+            course["name"],
+            course["distance_miles"],
+            course["legacy_distance_miles"],
+            course["region"],
+        ),
     )
     return cur.lastrowid
 
@@ -454,6 +665,24 @@ def insert_run(
             int(legacy),
             notes,
         ),
+    )
+    return True
+
+
+def insert_acceleration(conn, entry: tuple) -> bool:
+    year, vehicle, driver = entry[:3]
+    exists = conn.execute(
+        "SELECT 1 FROM acceleration_entries WHERE year IS ? AND vehicle = ? AND driver IS ?",
+        (year, vehicle, driver),
+    ).fetchone()
+    if exists:
+        return False
+    conn.execute(
+        """INSERT INTO acceleration_entries (year, vehicle, driver, hp, weight_lb,
+            zero_to_30_seconds, zero_to_60_seconds, quarter_mile_seconds,
+            quarter_mile_mph, eighth_mile_seconds, eighth_mile_mph, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sheet')""",
+        entry,
     )
     return True
 
@@ -517,8 +746,50 @@ def main():
                 False,
                 direction,
             )
+        for course, runs in (
+            (CANNONBALL_NORTH, CANNONBALL_NORTH_RUNS),
+            (CANNONBALL_SOUTH, CANNONBALL_SOUTH_RUNS),
+        ):
+            course_id = ensure_course(conn, course)
+            for time, vehicle, top, tod, driver, date, cond, notes in runs:
+                added += insert_run(
+                    conn,
+                    course_id,
+                    time,
+                    None,
+                    vehicle,
+                    None,
+                    top,
+                    driver,
+                    date,
+                    tod,
+                    cond,
+                    False,
+                    notes,
+                )
+        disco_id = ensure_course(conn, DISCO)
+        for time, vehicle, driver, date, direction in DISCO_RUNS:
+            added += insert_run(
+                conn,
+                disco_id,
+                time,
+                None,
+                vehicle,
+                None,
+                None,
+                driver,
+                date,
+                None,
+                None,
+                False,
+                direction,
+            )
+        accel_added = sum(insert_acceleration(conn, entry) for entry in ACCELERATION)
         total = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-    print(f"Imported {added} new runs ({total} total) into {db.DB_PATH}")
+    print(
+        f"Imported {added} new runs ({total} total) and {accel_added} new"
+        f" acceleration entries into {db.DB_PATH}"
+    )
 
 
 if __name__ == "__main__":

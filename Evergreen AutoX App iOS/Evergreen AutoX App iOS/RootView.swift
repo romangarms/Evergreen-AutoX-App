@@ -43,6 +43,8 @@ struct RootView: View {
             let course = model.leaderboardCourses.first { $0.id == courseID }
             let driver = model.leaderboardDriver(at: position)
             return ("DRIVER", driver?.name ?? "Driver", course?.name, false)
+        case .acceleration:
+            return ("LEADERBOARD", "Acceleration", nil, false)
         case nil:
             switch model.tab {
             case .live:
@@ -228,6 +230,8 @@ struct RootView: View {
             LeaderboardView(courseID: courseID)
         case .leaderboardDriver(let courseID, let position):
             LeaderboardDriverView(courseID: courseID, position: position)
+        case .acceleration:
+            AccelerationView()
         case nil:
             switch model.tab {
             case .live: LiveView(initialOffset: model.liveScrollOffset)
@@ -274,7 +278,7 @@ private struct NavRoute: Hashable {
     var depth: Int {
         switch screen {
         case nil: 0
-        case .driver, .leaderboard: 1
+        case .driver, .leaderboard, .acceleration: 1
         case .compare, .leaderboardDriver: 2
         }
     }

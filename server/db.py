@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS courses (
     owner_id TEXT,
     created_by TEXT,
     created_at TEXT,
-    hidden INTEGER NOT NULL DEFAULT 0
+    hidden INTEGER NOT NULL DEFAULT 0,
+    region TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -43,6 +44,24 @@ CREATE TABLE IF NOT EXISTS reports (
     reporter_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS acceleration_entries (
+    id INTEGER PRIMARY KEY,
+    year INTEGER,
+    vehicle TEXT NOT NULL,
+    driver TEXT,
+    hp INTEGER,
+    weight_lb INTEGER,
+    zero_to_30_seconds REAL,
+    zero_to_60_seconds REAL,
+    quarter_mile_seconds REAL,
+    quarter_mile_mph REAL,
+    eighth_mile_seconds REAL,
+    eighth_mile_mph REAL,
+    notes TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    hidden INTEGER NOT NULL DEFAULT 0
+);
 """
 
 # Columns added after the first release. SQLite's ALTER TABLE can't add a
@@ -56,6 +75,7 @@ ADDED_COLUMNS = [
     ("runs", "owner_id", "TEXT"),
     ("courses", "hidden", "INTEGER NOT NULL DEFAULT 0"),
     ("runs", "hidden", "INTEGER NOT NULL DEFAULT 0"),
+    ("courses", "region", "TEXT"),
 ]
 
 
@@ -100,7 +120,17 @@ def parse_time(value: float | str) -> float:
 
 def format_time(seconds: float) -> str:
     minutes, rest = divmod(seconds, 60)
-    return f"{int(minutes)}:{rest:06.3f}"
+    hours, minutes = divmod(int(minutes), 60)
+    if not hours:
+        return f"{minutes}:{rest:06.3f}"
+    # Clients size their time column for m:ss.mmm, so an hours-long time only
+    # carries a fraction when it has one.
+    whole = float(rest).is_integer()
+    return (
+        f"{hours}:{minutes:02d}:{rest:02.0f}"
+        if whole
+        else f"{hours}:{minutes:02d}:{rest:06.3f}"
+    )
 
 
 def adjusted_seconds(run: sqlite3.Row | dict, course: sqlite3.Row | dict) -> float:
@@ -138,3 +168,15 @@ def run_to_dict(
     if distance:
         out["avg_speed_mph"] = round(distance / out["time_seconds"] * 3600, 2)
     return out
+
+
+def acceleration_to_dict(entry: sqlite3.Row) -> dict:
+    out = dict(entry)
+    out["hidden"] = bool(out["hidden"])
+    return out
+
+
+# Ranked by 0-60, then 0-30, with entries missing a time after those that have it.
+def acceleration_sort_key(entry: dict) -> tuple:
+    sixty, thirty = entry["zero_to_60_seconds"], entry["zero_to_30_seconds"]
+    return (sixty is None, sixty or 0, thirty is None, thirty or 0)

@@ -452,7 +452,7 @@ struct LBEntryRow: View {
     let layout: LBRowLayout
     let onTap: () -> Void
 
-    private static let podium = [
+    static let podium = [
         Color(light: 0xB8860B, dark: 0xF2C14E),
         Color(light: 0x8A8A8A, dark: 0xC0C0C0),
         Color(light: 0xA0622A, dark: 0xCD7F32),
@@ -582,7 +582,7 @@ struct LBEntryRow: View {
     }
 }
 
-private struct LBTintCell: View {
+struct LBTintCell: View {
     let text: String
     let tint: LBTint?
 

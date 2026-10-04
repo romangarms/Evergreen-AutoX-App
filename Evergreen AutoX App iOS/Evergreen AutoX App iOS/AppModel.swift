@@ -30,6 +30,7 @@ final class AppModel {
         case compare(Int, Int)
         case leaderboard(Int)
         case leaderboardDriver(Int, Int)
+        case acceleration
     }
 
     static let defaultOrgID = 151294
@@ -72,6 +73,8 @@ final class AppModel {
     var leaderboardCourses: [LBCourse] = []
     var leaderboardDetail: LBCourseDetail?
     var leaderboardError: String?
+    var accelerationEntries: [AccelEntry]?
+    var accelerationError: String?
     var sessions: [SHSession] = []
     var drivers: [Driver] = []
     var selectedEventID: Int?
@@ -363,6 +366,8 @@ final class AppModel {
         self.screen = screen
         if case .leaderboard(let courseID) = screen {
             loadLeaderboard(courseID: courseID)
+        } else if screen == .acceleration {
+            loadAcceleration()
         }
     }
 
@@ -592,6 +597,18 @@ final class AppModel {
             } catch {
                 guard case .some(.leaderboard(courseID)) = screen else { return }
                 leaderboardError = error.localizedDescription
+            }
+        }
+    }
+
+    // The last list stays up while it reloads; the board changes rarely.
+    private func loadAcceleration() {
+        accelerationError = nil
+        Task {
+            do {
+                accelerationEntries = try await client.acceleration()
+            } catch {
+                accelerationError = error.localizedDescription
             }
         }
     }
