@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS courses (
     created_by TEXT,
     created_at TEXT,
     hidden INTEGER NOT NULL DEFAULT 0,
-    region TEXT
+    region TEXT,
+    unlisted INTEGER NOT NULL DEFAULT 0,
+    join_code TEXT
+);
+CREATE TABLE IF NOT EXISTS course_members (
+    course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (course_id, device_id)
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
@@ -44,6 +52,38 @@ CREATE TABLE IF NOT EXISTS reports (
     reporter_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS blocks (
+    id INTEGER PRIMARY KEY,
+    blocker_id TEXT NOT NULL,
+    blocked_id TEXT NOT NULL,
+    label TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (blocker_id, blocked_id)
+);
+CREATE TABLE IF NOT EXISTS bans (
+    id INTEGER PRIMARY KEY,
+    device_id TEXT NOT NULL UNIQUE,
+    label TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    apple_sub TEXT NOT NULL UNIQUE,
+    name TEXT,
+    email TEXT,
+    apple_refresh_token TEXT,
+    label TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS devices (
+    id INTEGER PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    label TEXT,
+    first_seen TEXT,
+    last_seen TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
 CREATE TABLE IF NOT EXISTS acceleration_entries (
     id INTEGER PRIMARY KEY,
     year INTEGER,
@@ -60,7 +100,8 @@ CREATE TABLE IF NOT EXISTS acceleration_entries (
     notes TEXT,
     source TEXT NOT NULL DEFAULT 'manual',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    hidden INTEGER NOT NULL DEFAULT 0
+    hidden INTEGER NOT NULL DEFAULT 0,
+    owner_id TEXT
 );
 """
 
@@ -76,6 +117,11 @@ ADDED_COLUMNS = [
     ("courses", "hidden", "INTEGER NOT NULL DEFAULT 0"),
     ("runs", "hidden", "INTEGER NOT NULL DEFAULT 0"),
     ("courses", "region", "TEXT"),
+    ("courses", "unlisted", "INTEGER NOT NULL DEFAULT 0"),
+    ("courses", "join_code", "TEXT"),
+    ("devices", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"),
+    ("acceleration_entries", "owner_id", "TEXT"),
+    ("users", "label", "TEXT"),
 ]
 
 
@@ -140,12 +186,23 @@ def adjusted_seconds(run: sqlite3.Row | dict, course: sqlite3.Row | dict) -> flo
     return time
 
 
-def course_to_dict(course: sqlite3.Row, viewer_id: str | None = None) -> dict:
+# The join code lets anyone add the board to their app, so only people who
+# already have the board get it back.
+def course_to_dict(
+    course: sqlite3.Row,
+    viewer_id: str | None = None,
+    is_member: bool = False,
+    is_admin: bool = False,
+) -> dict:
     out = dict(course)
     owner = out.pop("owner_id")
+    code = out.pop("join_code")
     out["has_owner"] = owner is not None
     out["hidden"] = bool(out["hidden"])
+    out["unlisted"] = bool(out["unlisted"])
     out["is_owner"] = owner is not None and owner == viewer_id
+    out["is_member"] = is_member
+    out["join_code"] = code if (is_admin or is_member or out["is_owner"]) else None
     return out
 
 
@@ -155,6 +212,7 @@ def run_to_dict(
 ) -> dict:
     out = dict(run)
     owner = out.pop("owner_id", None)
+    out["has_owner"] = owner is not None
     out["is_owner"] = owner is not None and owner == viewer_id
     out["legacy"] = bool(out["legacy"])
     out["hidden"] = bool(out["hidden"])
@@ -170,13 +228,16 @@ def run_to_dict(
     return out
 
 
-def acceleration_to_dict(entry: sqlite3.Row) -> dict:
+def acceleration_to_dict(entry: sqlite3.Row, viewer_id: str | None = None) -> dict:
     out = dict(entry)
+    owner = out.pop("owner_id")
+    out["has_owner"] = owner is not None
+    out["is_owner"] = owner is not None and owner == viewer_id
     out["hidden"] = bool(out["hidden"])
     return out
 
 
 # Ranked by 0-60, then 0-30, with entries missing a time after those that have it.
-def acceleration_sort_key(entry: dict) -> tuple:
+def acceleration_sort_key(entry: sqlite3.Row | dict) -> tuple:
     sixty, thirty = entry["zero_to_60_seconds"], entry["zero_to_30_seconds"]
     return (sixty is None, sixty or 0, thirty is None, thirty or 0)

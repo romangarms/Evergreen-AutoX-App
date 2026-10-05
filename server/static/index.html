@@ -181,6 +181,18 @@
         <ul id="report-list" class="picklist" style="margin-top:0.5rem"></ul>
       </div>
       <div class="panel admin-only">
+        <h2>Banned devices</h2>
+        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Ban a poster from a report. A ban blocks the device from writing and hides everything it posted; lifting it leaves that content hidden.</p>
+        <button class="btn" id="bans-load-btn">Load bans</button>
+        <ul id="ban-list" class="picklist" style="margin-top:0.5rem"></ul>
+      </div>
+      <div class="panel admin-only">
+        <h2>Users</h2>
+        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Every account, with the phones signed in to it, and every phone that has reached the leaderboard API without signing in, newest activity first. The names are what they posted under; the labels are yours. "Add to board" and "Make owner" act on the course open on the right.</p>
+        <div class="row"><button class="btn" id="users-load-btn">Load users</button><input id="users-filter" type="search" placeholder="Filter" style="flex:1;min-width:0"></div>
+        <ul id="user-list" class="picklist" style="margin-top:0.5rem"></ul>
+      </div>
+      <div class="panel admin-only">
         <h2>TrackAddict import</h2>
         <div class="row">
           <input id="ta-file" type="file" accept=".csv" style="max-width:100%">
@@ -197,11 +209,13 @@
           <div class="row" id="lb-course-actions" style="display:none">
             <span class="muted" id="lb-course-meta"></span>
             <label class="check inline admin-only" title="Hidden boards disappear from the app and the public API."><input id="course-hidden" type="checkbox"> hidden</label>
+            <label class="check inline admin-only" title="Unlisted boards only reach app users who created them or joined with the code. The website still lists them."><input id="course-unlisted" type="checkbox"> unlisted</label>
             <button class="btn admin-only" id="course-edit-btn">Edit course</button>
             <button class="btn admin-only" id="course-owner-btn">Set owner</button>
             <button class="btn danger admin-only" id="course-del-btn">Delete course</button>
           </div>
         </div>
+        <div id="lb-members" class="admin-only" style="font-size:11px;margin-top:0.4rem"></div>
         <div class="table-scroll" style="margin-top:0.5rem">
           <table id="lb-table">
             <thead><tr>
@@ -259,6 +273,14 @@
         <tbody><tr><td colspan="15" class="muted">(open the tab to load)</td></tr></tbody>
       </table>
     </div>
+  </div>
+  <div class="panel admin-only" style="margin-top:1rem">
+    <h2>TrackAddict import</h2>
+    <div class="row">
+      <input id="accel-ta-file" type="file" accept=".csv" style="max-width:100%">
+      <button class="btn" id="accel-ta-parse-btn">Parse</button>
+    </div>
+    <div id="accel-ta-laps" style="margin-top:0.5rem"></div>
   </div>
   <div class="panel admin-only" style="margin-top:1rem">
     <h2 id="accel-form-title">Add entry</h2>
@@ -341,6 +363,8 @@ document.querySelectorAll("nav button").forEach(btn => {
 // The login itself is an HttpOnly cookie the page cannot read; this only
 // mirrors whether the server accepted it.
 let adminUser = null;
+let users = [];
+let usersLoaded = false;
 
 const loginDialog = $("login");
 let loginPending = null;
@@ -392,6 +416,10 @@ $("auth-btn").onclick = async () => {
   renderAuth();
   // Hiding the admin panels is not enough; what they loaded has to go too.
   $("report-list").innerHTML = "";
+  $("ban-list").innerHTML = "";
+  users = [];
+  usersLoaded = false;
+  renderUsers();
   $("ta-laps").innerHTML = "";
   loadCourses(currentCourse?.id);
   resetAcceleration();
@@ -470,7 +498,7 @@ const showJSON = data => { $("lb-json").textContent = JSON.stringify(data, null,
 async function loadCourses(selectId) {
   const courses = await api("/api/leaderboard/courses");
   fillList($("course-list"), courses,
-    c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}<br><span class="sub">#${c.id}${c.region ? " · " + esc(c.region) : ""} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
+    c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}<br><span class="sub">#${c.id}${c.region ? " · " + esc(c.region) : ""} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
@@ -491,6 +519,7 @@ function clearCourse() {
   $("course-form").style.display = "none";
   $("owner-form").style.display = "none";
   $("lb-title").textContent = "No course selected";
+  $("lb-members").innerHTML = "";
   $("lb-course-actions").style.display = "none";
   $("lb-table").querySelector("tbody").innerHTML =
     "<tr><td colspan='12' class='muted'>Select a course on the left.</td></tr>";
@@ -516,10 +545,34 @@ async function refreshLeaderboard() {
   if (data.course.legacy_distance_miles) meta.push(`legacy ${data.course.legacy_distance_miles} mi`);
   if (data.course.created_by) meta.push(`by ${data.course.created_by}`);
   meta.push(data.course.has_owner ? "owned by a device" : "no owner");
+  if (data.course.unlisted) meta.push(`unlisted, join code ${data.course.join_code ?? "(sign in to see)"}`);
   if (data.course.description) meta.push(data.course.description);
   $("lb-course-meta").textContent = meta.join(" · ");
   $("course-hidden").checked = data.course.hidden;
+  $("course-unlisted").checked = data.course.unlisted;
   renderRuns(data.runs);
+  if (adminUser) renderMembers(await api(`/api/leaderboard/courses/${currentCourse.id}/members`));
+  else $("lb-members").innerHTML = "";
+}
+
+const personName = p => p.label ?? p.name ?? p.names[0] ?? `(unnamed ${p.kind} #${p.id})`;
+
+function renderMembers(members) {
+  const box = $("lb-members");
+  const course = currentCourse;
+  box.innerHTML = `<span class="muted">Members: ${members.length ? "" : "(none; add people from the Users panel, or share the join code)"}</span>`;
+  for (const m of members) {
+    const chip = document.createElement("span");
+    chip.className = "badge";
+    chip.title = `joined ${m.joined_at}`;
+    chip.innerHTML = `${esc(personName(m))} <a href="#" title="Remove from this board">×</a>`;
+    chip.querySelector("a").onclick = async e => {
+      e.preventDefault();
+      renderMembers(await api(`/api/leaderboard/courses/${course.id}/members/${m.kind}/${m.id}`, { method: "DELETE" }));
+      if (usersLoaded) loadUsers();
+    };
+    box.appendChild(chip);
+  }
 }
 
 function renderRuns(runs) {
@@ -573,6 +626,17 @@ async function setHidden(kind, id, box) {
   else refreshLeaderboard();
 }
 $("course-hidden").onchange = () => { if (currentCourse) setHidden("courses", currentCourse.id, $("course-hidden")); };
+$("course-unlisted").onchange = async () => {
+  if (!currentCourse) return;
+  const box = $("course-unlisted");
+  try {
+    await apiJSON(`/api/leaderboard/courses/${currentCourse.id}`, "PATCH", { unlisted: box.checked });
+  } catch {
+    box.checked = !box.checked;
+    return;
+  }
+  loadCourses(currentCourse.id);
+};
 
 const runFields = {
   driver: () => $("run-driver").value,
@@ -700,19 +764,42 @@ async function loadReports() {
     const target = r.target
       ? (r.target_type === "course"
           ? `board “${esc(r.target.name)}”`
+          : r.target_type === "acceleration"
+          ? `acceleration entry ${esc(r.target.vehicle)}${r.target.driver ? " (" + esc(r.target.driver) + ")" : ""}`
           : `run ${esc(r.target.driver)} ${r.target.time} on “${esc(r.target.course_name)}”`)
       : `${r.target_type} #${r.target_id} (deleted)`;
     const li = document.createElement("li");
     li.innerHTML = `${target}<br><span class="sub">${esc(r.reason ?? "")} · ${esc(r.created_at)}</span>
-      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button>${r.target ? `<label class="check inline"><input type="checkbox" data-act="hide"${r.target.hidden ? " checked" : ""}> hidden</label>` : ""}</div>`;
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button>${r.target ? `<label class="check inline"><input type="checkbox" data-act="hide"${r.target.hidden ? " checked" : ""}> hidden</label>${r.target.has_owner ? '<button class="btn danger" data-act="ban">Ban poster</button>' : ""}` : ""}</div>`;
     const courseId = r.target ? (r.target_type === "course" ? r.target.id : r.target.course_id) : null;
-    li.querySelector("[data-act=open]").onclick = e => { e.stopPropagation(); if (courseId != null) loadCourses(courseId); };
+    li.querySelector("[data-act=open]").onclick = e => {
+      e.stopPropagation();
+      if (r.target_type === "acceleration") document.querySelector("[data-tab=acceleration]").click();
+      else if (courseId != null) loadCourses(courseId);
+    };
     const reportHide = li.querySelector("[data-act=hide]");
     if (reportHide) {
       reportHide.parentElement.onclick = e => e.stopPropagation();
       reportHide.onchange = async () => {
-        await setHidden(r.target_type === "course" ? "courses" : "runs", r.target.id, reportHide);
+        if (r.target_type === "acceleration") {
+          try {
+            showJSON(await apiJSON(`/api/acceleration/${r.target.id}`, "PATCH", { hidden: reportHide.checked }));
+          } catch {
+            reportHide.checked = !reportHide.checked;
+          }
+        } else {
+          await setHidden(r.target_type === "course" ? "courses" : "runs", r.target.id, reportHide);
+        }
         loadReports();
+      };
+    }
+    const reportBan = li.querySelector("[data-act=ban]");
+    if (reportBan) {
+      reportBan.onclick = async e => {
+        e.stopPropagation();
+        await apiJSON("/api/leaderboard/bans", "POST", { target_type: r.target_type, target_id: r.target.id, reason: r.reason });
+        loadReports();
+        loadBans();
       };
     }
     li.querySelector("[data-act=dismiss]").onclick = async e => {
@@ -724,6 +811,116 @@ async function loadReports() {
   }
 }
 $("reports-load-btn").onclick = loadReports;
+
+async function loadBans() {
+  const bans = await api("/api/leaderboard/bans");
+  const ul = $("ban-list");
+  ul.innerHTML = "";
+  if (!bans.length) ul.innerHTML = "<li class='muted'>(no bans)</li>";
+  for (const b of bans) {
+    const li = document.createElement("li");
+    li.innerHTML = `${esc(b.label ?? "(unnamed)")}<br><span class="sub">${esc(b.reason ?? "")} · ${esc(b.created_at)}</span>
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="unban">Lift ban</button></div>`;
+    li.querySelector("[data-act=unban]").onclick = async e => {
+      e.stopPropagation();
+      await api(`/api/leaderboard/bans/${b.id}`, { method: "DELETE" });
+      loadBans();
+    };
+    ul.appendChild(li);
+  }
+}
+$("bans-load-btn").onclick = loadBans;
+
+function labelRow(value, save) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.style.marginTop = "0.3rem";
+  row.innerHTML = `<input maxlength="80" placeholder="Label" value="${esc(value ?? "")}" style="flex:1;min-width:0"><button class="btn">Save</button>`;
+  const input = row.querySelector("input");
+  const run = async () => { await save(input.value); loadUsers(); };
+  row.querySelector("button").onclick = run;
+  input.onkeydown = e => { if (e.key === "Enter") run(); };
+  return row;
+}
+
+function renderUsers() {
+  const ul = $("user-list");
+  const filter = $("users-filter").value.trim().toLowerCase();
+  const shown = users.filter(u => !filter || [u.label, u.name, u.email, ...u.names, ...u.devices.map(d => d.label), `${u.kind} #${u.id}`].some(s => s && s.toLowerCase().includes(filter)));
+  const accounts = users.filter(u => u.kind === "user");
+  ul.innerHTML = "";
+  if (usersLoaded && !shown.length) ul.innerHTML = "<li class='muted'>(no users)</li>";
+  for (const u of shown) {
+    const isAccount = u.kind === "user";
+    const who = { kind: u.kind, id: u.id };
+    const li = document.createElement("li");
+    li.style.cursor = "default";
+    li.innerHTML = `${esc(personName(u))}${u.banned ? '<span class="badge hidden">banned</span>' : ""}${isAccount ? '<span class="badge">account</span>' : ""}<br>
+      <span class="sub">${isAccount ? "Apple: " + esc([u.name, u.email].filter(Boolean).join(" · ") || "no name shared") : "phone #" + u.id + " · not signed in"}${u.names.length ? " · posts as " + esc(u.names.join(", ")) : ""} · ${u.courses} boards · ${u.runs} runs · ${u.acceleration} accel · joined ${u.joined}<br>
+      last seen ${esc(u.last_seen ?? (isAccount ? "(signed out everywhere)" : "before tracking"))}${u.first_seen ? " · first " + esc(u.first_seen) : ""}</span>`;
+    li.appendChild(labelRow(u.label, value =>
+      apiJSON(isAccount ? `/api/admin/users/${u.id}` : `/api/admin/devices/${u.id}`, "PATCH", { label: value })));
+    for (const d of u.devices) {
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.style.marginTop = "0.3rem";
+      sub.textContent = `phone #${d.id} · last seen ${d.last_seen ?? "?"}`;
+      li.appendChild(sub);
+      li.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value })));
+    }
+    const actions = document.createElement("div");
+    actions.className = "row";
+    actions.style.marginTop = "0.3rem";
+    actions.innerHTML = `<button class="btn" data-act="member">Add to board</button><button class="btn" data-act="owner">Make owner</button><button class="btn${u.banned ? "" : " danger"}" data-act="ban">${u.banned ? "Lift ban" : "Ban"}</button>`;
+    const onCourse = action => async () => {
+      if (!currentCourse) { setStatus("open a course first", true); return; }
+      await action(currentCourse);
+      await refreshLeaderboard();
+      loadUsers();
+    };
+    actions.querySelector("[data-act=member]").onclick = onCourse(course =>
+      apiJSON(`/api/leaderboard/courses/${course.id}/members`, "POST", who));
+    actions.querySelector("[data-act=owner]").onclick = onCourse(course =>
+      apiJSON(`/api/leaderboard/courses/${course.id}/owner`, "PUT", { person: who }));
+    const ban = actions.querySelector("[data-act=ban]");
+    if (u.banned) {
+      ban.onclick = async () => {
+        await api(`/api/leaderboard/bans/${u.ban_id}`, { method: "DELETE" });
+        loadUsers();
+        loadBans();
+      };
+    } else {
+      armConfirm(ban, async () => {
+        await apiJSON("/api/admin/bans", "POST", { ...who, reason: "Banned from the Users panel" });
+        loadUsers();
+        loadBans();
+      });
+    }
+    li.appendChild(actions);
+    if (!isAccount && accounts.length && u.courses + u.runs + u.acceleration + u.joined > 0) {
+      const move = document.createElement("div");
+      move.className = "row";
+      move.style.marginTop = "0.3rem";
+      move.innerHTML = `<select style="flex:1;min-width:0"><option value="">Move this phone's posts to…</option>${accounts.map(a => `<option value="${a.id}">${esc(personName(a))}</option>`).join("")}</select><button class="btn">Move</button>`;
+      armConfirm(move.querySelector("button"), async () => {
+        const userId = move.querySelector("select").value;
+        if (!userId) { setStatus("pick an account first", true); return; }
+        await apiJSON(`/api/admin/devices/${u.id}/move`, "POST", { user_id: Number(userId) });
+        await refreshLeaderboard();
+        loadUsers();
+      });
+      li.appendChild(move);
+    }
+    ul.appendChild(li);
+  }
+}
+async function loadUsers() {
+  users = await api("/api/admin/users");
+  usersLoaded = true;
+  renderUsers();
+}
+$("users-load-btn").onclick = loadUsers;
+$("users-filter").oninput = renderUsers;
 
 $("ta-parse-btn").onclick = async () => {
   const file = $("ta-file").files[0];
@@ -783,6 +980,7 @@ async function loadDrivers(session) {
 
 // ---------- Acceleration ----------
 let editingAccelId = null;
+let accelSource = "manual";
 const accelInputs = {
   year: "accel-year", vehicle: "accel-vehicle", driver: "accel-driver", hp: "accel-hp",
   weight_lb: "accel-weight", zero_to_30_seconds: "accel-30", zero_to_60_seconds: "accel-60",
@@ -858,6 +1056,7 @@ function cancelAccelEdit() {
   $("accel-save-btn").textContent = "Add entry";
   $("accel-cancel-btn").style.display = "none";
   $("accel-form").reset();
+  accelSource = "manual";
 }
 
 function resetAcceleration() {
@@ -878,9 +1077,41 @@ $("accel-form").onsubmit = async e => {
   }));
   showAccelJSON(editingAccelId
     ? await apiJSON(`/api/acceleration/${editingAccelId}`, "PATCH", body)
-    : await apiJSON("/api/acceleration", "POST", body));
+    : await apiJSON("/api/acceleration", "POST", { ...body, source: accelSource }));
   cancelAccelEdit();
   loadAcceleration();
+};
+
+const accelImportInputs = {
+  zero_to_30_seconds: "accel-30", zero_to_60_seconds: "accel-60",
+  quarter_mile_seconds: "accel-q-time", quarter_mile_mph: "accel-q-speed",
+  eighth_mile_seconds: "accel-e-time", eighth_mile_mph: "accel-e-speed",
+};
+$("accel-ta-parse-btn").onclick = async () => {
+  const file = $("accel-ta-file").files[0];
+  if (!file) { setStatus("pick a CSV first", true); return; }
+  const parsed = await api("/api/trackaddict/parse",
+    { method: "POST", body: await file.text(), headers: { "Content-Type": "text/csv" } });
+  showAccelJSON(parsed);
+  const pulls = parsed.laps.filter(l => l.acceleration);
+  if (!pulls.length) {
+    $("accel-ta-laps").innerHTML = "<div class='muted'>No standing-start run in that log.</div>";
+    return;
+  }
+  const cell = v => `<td class="num">${v ?? ""}</td>`;
+  $("accel-ta-laps").innerHTML = `
+    <table><thead><tr><th class="num">Run</th><th class="num">0-30</th><th class="num">0-60</th>
+      <th class="num">1/4 s</th><th class="num">1/4 mph</th><th class="num">1/8 s</th><th class="num">1/8 mph</th></tr></thead>
+    <tbody>${pulls.map(l => `<tr class="clickable" data-lap="${l.lap}">${cell(l.lap)}${Object.keys(accelImportInputs).map(key => cell(l.acceleration[key])).join("")}</tr>`).join("")}</tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:0.3rem">Click a run to fill the entry form. 0-30 and 0-60 are interpolated from the GPS speed trace.</div>`;
+  $("accel-ta-laps").querySelectorAll("tr.clickable").forEach(tr => {
+    tr.onclick = () => {
+      const pull = pulls.find(l => l.lap === Number(tr.dataset.lap));
+      for (const [key, id] of Object.entries(accelImportInputs)) $(id).value = pull.acceleration[key] ?? "";
+      accelSource = "trackaddict";
+      setStatus(`run ${pull.lap} → entry form`);
+    };
+  });
 };
 
 // ---------- GGLC ----------

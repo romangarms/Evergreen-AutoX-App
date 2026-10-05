@@ -157,6 +157,8 @@ struct DriverRunsTable: View {
     var canDelete: ((Run) -> Bool)?
     var onDelete: ((Run) -> Void)?
     var onReport: ((Run) -> Void)?
+    var canBlock: ((Run) -> Bool)?
+    var onBlock: ((Run) -> Void)?
 
     private var hasMenu: Bool { onReport != nil || onDelete != nil }
 
@@ -239,6 +241,13 @@ struct DriverRunsTable: View {
                     onReport(run)
                 } label: {
                     Label("Report Run", systemImage: "flag")
+                }
+            }
+            if let onBlock, canBlock?(run) ?? true {
+                Button(role: .destructive) {
+                    onBlock(run)
+                } label: {
+                    Label("Block Poster", systemImage: "hand.raised")
                 }
             }
         } label: {

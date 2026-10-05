@@ -13,7 +13,7 @@
   <p class="meta">Effective September 20, 2026</p>
 
   <p>AutoX Live is an independent iOS app for following autocross timing results and posting times to
-  community leaderboards. It has no accounts, no ads, and no analytics or tracking SDKs. This page
+  community leaderboards. It has no ads and no analytics or tracking SDKs. This page
   explains the little data it does handle.</p>
 
   <h2>What stays on your phone</h2>
@@ -25,12 +25,25 @@
     <li><strong>A random device ID.</strong> The first time you open the app it generates a random
     identifier and stores it in your device's Keychain. It is sent with the app's requests to our
     server so the server can tell which leaderboards and times are yours to edit or delete. It is
-    not derived from your name, Apple ID, or hardware, and it is never shown to other users.</li>
+    not derived from your name, Apple ID, or hardware, and it is never shown to other users. The
+    server keeps a record of each device ID with the first and most recent time it was used.</li>
+    <li><strong>Your Apple sign-in.</strong> Posting requires signing in with Apple; browsing does
+    not. When you sign in we store the identifier Apple gives this app for your Apple ID, the name
+    you choose to share or type into Setup, and your email address or, if you hide it, Apple's private relay address.
+    They let you edit your posts from any phone you sign in on, and are never shown to other
+    users.</li>
     <li><strong>What you post.</strong> Leaderboards you create and times you post, including the
     name or nickname, vehicle, and notes you type in. <strong>Everything you post is public</strong>
     and visible to anyone using the app or the leaderboard website.</li>
     <li><strong>Reports.</strong> If you report a leaderboard or a time, we store the reason you
     wrote along with your device ID.</li>
+    <li><strong>Blocks.</strong> If you block a poster, we store that your device ID blocked theirs
+    so the server can leave their leaderboards and times out of what it sends you. Blocking also
+    files a report. The person you blocked is not told.</li>
+    <li><strong>Joined leaderboards.</strong> If you add an unlisted leaderboard with a join code,
+    we store that your device ID joined it so the server keeps sending it to you. Unlisted
+    leaderboards are left out of the app's list, but they are not private: anyone who has the
+    join code can see what is posted to them, and some are shown on the leaderboard website.</li>
     <li><strong>TrackAddict logs.</strong> If you import a TrackAddict CSV to post a time, the file
     is sent to our server only to read its lap times. It is processed in memory and is not saved.
     Note that these files contain GPS data recorded by TrackAddict.</li>
@@ -51,10 +64,12 @@
   sources, not by us.</p>
 
   <h2>Deleting your data</h2>
-  <p>You can delete leaderboards you created and times you posted from inside the app. The device
-  ID lives only on your phone, so if you erase it or move to a new phone you can no longer edit
-  those posts yourself. If you want them removed, or want anything else deleted, email us and we
-  will take care of it.</p>
+  <p>You can delete leaderboards you created and times you posted from inside the app. Delete
+  Account on the Setup tab removes your account, every leaderboard you created along with the
+  times on it, and every time you posted. If you were banned from posting, we keep Apple's
+  identifier for your Apple ID so the ban stays in place. Posts made before sign-in existed, from
+  a phone that never signed in, can only be edited from that phone; if you want those removed, or
+  want anything else deleted, email us and we will take care of it.</p>
 
   <h2>Children</h2>
   <p>AutoX Live is not directed at children under 13 and we do not knowingly collect information

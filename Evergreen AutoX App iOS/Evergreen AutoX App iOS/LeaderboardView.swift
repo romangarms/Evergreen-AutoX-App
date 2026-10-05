@@ -6,6 +6,8 @@ struct LeaderboardView: View {
 
     @State private var sheet: Sheet?
     @State private var confirmDelete = false
+    @State private var confirmBlock = false
+    @State private var copiedCode = false
     @State private var notice: String?
     @State private var actionError: String?
     @State private var width: CGFloat = 0
@@ -49,6 +51,24 @@ struct LeaderboardView: View {
                         Text(description)
                             .font(.system(size: 12))
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let course, course.unlisted, let code = course.joinCode {
+                        HStack(spacing: 8) {
+                            Text("Unlisted · join code \(code)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(Color.egGrayDark)
+                            Button(copiedCode ? "COPIED" : "COPY") {
+                                UIPasteboard.general.string = code
+                                copiedCode = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(2))
+                                    copiedCode = false
+                                }
+                            }
+                            .buttonStyle(EGChipButtonStyle())
+                        }
                     }
 
                     if let course {
@@ -135,6 +155,19 @@ struct LeaderboardView: View {
                 }
             }
         }
+        .confirmationDialog("Block this leaderboard's creator?", isPresented: $confirmBlock, titleVisibility: .visible) {
+            Button("Block Creator", role: .destructive) {
+                Task {
+                    do {
+                        try await model.blockPoster(.course(courseID), courseID: courseID)
+                    } catch {
+                        actionError = error.localizedDescription
+                    }
+                }
+            }
+        } message: {
+            Text(LBBlockCopy.message)
+        }
     }
 
     private func actions(_ course: LBCourse) -> some View {
@@ -162,10 +195,31 @@ struct LeaderboardView: View {
                 } label: {
                     Label("Report Leaderboard", systemImage: "flag")
                 }
-                Button {
-                    model.hideCourse(id: course.id)
-                } label: {
-                    Label("Hide Leaderboard", systemImage: "eye.slash")
+                if course.hasOwner, !course.isOwner {
+                    Button(role: .destructive) {
+                        confirmBlock = true
+                    } label: {
+                        Label("Block Creator", systemImage: "hand.raised")
+                    }
+                }
+                if course.isMember {
+                    Button {
+                        Task {
+                            do {
+                                try await model.leaveCourse(id: course.id)
+                            } catch {
+                                actionError = error.localizedDescription
+                            }
+                        }
+                    } label: {
+                        Label("Leave Leaderboard", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                } else {
+                    Button {
+                        model.hideCourse(id: course.id)
+                    } label: {
+                        Label("Hide Leaderboard", systemImage: "eye.slash")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -209,6 +263,7 @@ struct LeaderboardDriverView: View {
 
     @State private var reportTarget: LBReportTarget?
     @State private var pendingDelete: LBRun?
+    @State private var pendingBlock: LBRun?
     @State private var notice: String?
     @State private var actionError: String?
 
@@ -295,6 +350,12 @@ struct LeaderboardDriverView: View {
                     },
                     onReport: { run in
                         reportTarget = .run(run.lapNumber)
+                    },
+                    canBlock: { run in
+                        lbRunsByID[run.lapNumber]?.canBlockPoster == true
+                    },
+                    onBlock: { run in
+                        pendingBlock = lbRunsByID[run.lapNumber]
                     }
                 )
 
@@ -340,6 +401,24 @@ struct LeaderboardDriverView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Block whoever posted this run?",
+            isPresented: Binding(get: { pendingBlock != nil }, set: { if !$0 { pendingBlock = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingBlock
+        ) { run in
+            Button("Block Poster", role: .destructive) {
+                Task {
+                    do {
+                        try await model.blockPoster(.run(run.id), courseID: courseID)
+                    } catch {
+                        actionError = error.localizedDescription
+                    }
+                }
+            }
+        } message: { _ in
+            Text(LBBlockCopy.message)
+        }
     }
 
     private func showNotice(_ text: String) {
@@ -361,6 +440,10 @@ struct LeaderboardDriverView: View {
         }
         return tags
     }
+}
+
+enum LBBlockCopy {
+    static let message = "You won't see leaderboards or times from this poster, and we'll be told about it. Unblock from the Setup tab."
 }
 
 // Thresholds and colors match the HWY 9 sheet's conditional formatting, which

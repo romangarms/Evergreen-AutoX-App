@@ -3,6 +3,7 @@ import SwiftUI
 struct EventsView: View {
     @Environment(AppModel.self) private var model
     @State private var showNewCourse = false
+    @State private var showJoinCourse = false
 
     // Three sections must fit on one screen with the search field, so
     // each shows only its newest few until expanded.
@@ -56,6 +57,9 @@ struct EventsView: View {
         .sheet(isPresented: $showNewCourse) {
             GuidelinesGate { CourseFormView() }
         }
+        .sheet(isPresented: $showJoinCourse) {
+            JoinCourseSheet()
+        }
     }
 
     private var query: String {
@@ -106,6 +110,11 @@ struct EventsView: View {
         return rows
     }
 
+    private func expandLabel(expanded: Bool, count: Int, short: Bool) -> String {
+        if expanded { return short ? "LESS" : "SHOW LESS" }
+        return short ? "ALL \(count)" : "SHOW ALL \(count)"
+    }
+
     private func sectionView(_ section: SourceSection) -> some View {
         let expanded = model.expandedEventSources.contains(section.source)
         let expandable = !isSearching && section.events.count > Self.collapsedCount
@@ -126,6 +135,11 @@ struct EventsView: View {
                 }
                 Spacer(minLength: 8)
                 if section.source == .leaderboard, !isSearching {
+                    Button("JOIN") {
+                        showJoinCourse = true
+                    }
+                    .buttonStyle(EGChipButtonStyle())
+                    .fixedSize()
                     Button {
                         showNewCourse = true
                     } label: {
@@ -136,6 +150,7 @@ struct EventsView: View {
                         }
                     }
                     .buttonStyle(EGChipButtonStyle(tint: .egRed))
+                    .fixedSize()
                 }
                 if expandable {
                     Button {
@@ -148,7 +163,9 @@ struct EventsView: View {
                         }
                     } label: {
                         HStack(spacing: 5) {
-                            Text(expanded ? "SHOW LESS" : "SHOW ALL \(section.events.count)")
+                            // The leaderboard header also holds JOIN and NEW, which leaves
+                            // no room for the longer label on a 390pt-wide phone.
+                            Text(expandLabel(expanded: expanded, count: section.events.count, short: section.source == .leaderboard))
                                 .fixedSize()
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 9, weight: .heavy))

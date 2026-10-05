@@ -65,6 +65,14 @@ struct APIClient {
         try await get("api/acceleration")
     }
 
+    func createAcceleration(_ input: AccelEntryInput) async throws -> AccelEntry {
+        try await send("api/acceleration", method: "POST", json: input)
+    }
+
+    func deleteAcceleration(id: Int) async throws {
+        let _: Deleted = try await send("api/acceleration/\(id)", method: "DELETE")
+    }
+
     func createCourse(_ input: LBCourseInput) async throws -> LBCourse {
         try await send("api/leaderboard/courses", method: "POST", json: input)
     }
@@ -77,6 +85,14 @@ struct APIClient {
         let _: Deleted = try await send("api/leaderboard/courses/\(id)", method: "DELETE")
     }
 
+    func joinCourse(code: String) async throws -> LBCourse {
+        try await send("api/leaderboard/join", method: "POST", json: LBJoinInput(code: code))
+    }
+
+    func leaveCourse(id: Int) async throws {
+        let _: Deleted = try await send("api/leaderboard/courses/\(id)/membership", method: "DELETE")
+    }
+
     func createRun(courseID: Int, _ input: LBRunInput) async throws -> LBRun {
         try await send("api/leaderboard/courses/\(courseID)/runs", method: "POST", json: input)
     }
@@ -87,6 +103,38 @@ struct APIClient {
 
     func report(_ input: LBReportInput) async throws {
         let _: Created = try await send("api/leaderboard/reports", method: "POST", json: input)
+    }
+
+    func block(_ input: LBBlockInput) async throws -> LBBlock {
+        try await send("api/leaderboard/blocks", method: "POST", json: input)
+    }
+
+    func blocks() async throws -> [LBBlock] {
+        try await get("api/leaderboard/blocks")
+    }
+
+    func unblock(id: Int) async throws {
+        let _: Deleted = try await send("api/leaderboard/blocks/\(id)", method: "DELETE")
+    }
+
+    func account() async throws -> Account {
+        try await get("api/account")
+    }
+
+    func signInWithApple(_ input: AppleSignInInput) async throws -> Account {
+        try await send("api/account/apple", method: "POST", json: input)
+    }
+
+    func updateAccount(name: String) async throws -> Account {
+        try await send("api/account", method: "PATCH", json: AccountNameInput(name: name))
+    }
+
+    func signOut() async throws -> Account {
+        try await send("api/account/session", method: "DELETE")
+    }
+
+    func deleteAccount() async throws -> Account {
+        try await send("api/account", method: "DELETE")
     }
 
     func parseTrackAddict(csv: Data) async throws -> TAParsedLog {

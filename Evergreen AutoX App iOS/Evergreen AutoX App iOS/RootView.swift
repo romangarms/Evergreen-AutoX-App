@@ -15,6 +15,7 @@ struct RootView: View {
             tabBar
         }
         .background(Color.egBg)
+        .modifier(AppleCredentialWatcher())
         .alert("Speedhive Organization", isPresented: $showOrgPrompt) {
             TextField("\(AppModel.defaultOrgID)", text: $orgIDText)
                 .keyboardType(.numberPad)
@@ -45,6 +46,9 @@ struct RootView: View {
             return ("DRIVER", driver?.name ?? "Driver", course?.name, false)
         case .acceleration:
             return ("LEADERBOARD", "Acceleration", nil, false)
+        case .accelerationEntry(let id):
+            let entry = model.accelerationEntries?.first { $0.id == id }
+            return ("VEHICLE", entry?.title ?? "Vehicle", "Acceleration", false)
         case nil:
             switch model.tab {
             case .live:
@@ -232,6 +236,8 @@ struct RootView: View {
             LeaderboardDriverView(courseID: courseID, position: position)
         case .acceleration:
             AccelerationView()
+        case .accelerationEntry(let id):
+            AccelerationEntryView(entryID: id)
         case nil:
             switch model.tab {
             case .live: LiveView(initialOffset: model.liveScrollOffset)
@@ -279,7 +285,7 @@ private struct NavRoute: Hashable {
         switch screen {
         case nil: 0
         case .driver, .leaderboard, .acceleration: 1
-        case .compare, .leaderboardDriver: 2
+        case .compare, .leaderboardDriver, .accelerationEntry: 2
         }
     }
 }

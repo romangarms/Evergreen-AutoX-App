@@ -1,4 +1,7 @@
 speedhive-tools @ git+https://github.com/cosmoslab58/speedhive-tools@665f47e50ef251c2935d8c8e3023887e7698521b
 fastapi
 uvicorn[standard]
+better-profanity
+pyjwt[crypto]
 ruff
+pytest

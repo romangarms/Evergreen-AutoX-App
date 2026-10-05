@@ -99,7 +99,8 @@ to (2) once accounts exist.
 ### TrackAddict upload to the leaderboard
 
 Done (Sept 2026): the Post a Time sheet imports a CSV through the Files picker, lists the parsed laps, and
-fills in the time and top speed from the chosen lap with `source = 'trackaddict'`. Still open:
+fills in the time and top speed from the chosen lap with `source = 'trackaddict'`. The Acceleration board
+posts the same way (Oct 2026) from a drag-mode log, which supplies 0-30, 0-60, and the 1/8 and 1/4 mile. Still open:
 
 - Accept the CSV straight from the share sheet / TrackAddict's export flow, not only the Files picker.
 - **(proposed)** Keep the raw CSV on the server next to the run so admins can verify a claimed time and so

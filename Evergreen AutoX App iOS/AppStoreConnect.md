@@ -40,30 +40,45 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 > - Star a few cars, mark one as "me" (Setup tab), then check the Friends tab and the head-to-head compare.
 > - Events tab → Community: open a leaderboard, post a time (typed in, or imported from a TrackAddict CSV),
 >   then delete it.
+> - Events tab → Acceleration: if you have a TrackAddict drag-run log, post it with POST A TIME and check the
+>   0-60 and quarter-mile numbers against what TrackAddict showed.
 > - Anything confusing, slow, or wrong: screenshot it in TestFlight and send feedback, or email
 >   romangarms@gmail.com.
 
 ### Beta App Review Information
 
-- **Sign-in required:** No (uncheck it; the app has no accounts).
+- **Sign-in required:** No (uncheck it; only posting needs Sign in with Apple, and the reviewer can use their own Apple ID).
 - **Contact:** Roman Garms, romangarms@gmail.com, plus a phone number Apple can reach.
 - **Review Notes:**
 
 > AutoX Live shows autocross (cone-course time trial) results and lets drivers post times to community
-> leaderboards. There is no login; all features are available on first launch.
+> leaderboards. Viewing everything works on first launch with no login. Posting a time or creating a
+> leaderboard requires Sign in with Apple (the only sign-in option), so that people keep edit access to
+> their posts on a new phone; any Apple ID works, no demo account is needed. Account deletion is on the
+> Setup tab under Account → Delete Account.
 >
 > Where to look: the app opens on the newest event (Live tab). The Events tab lists all events, and its
-> "Community" section holds the user-created leaderboards.
+> "Community" section holds the user-created leaderboards. The Acceleration board at the top of that
+> section ranks 0-60 and quarter-mile times; users post to it by importing a drag-run log recorded with
+> the TrackAddict app, and it carries a notice that times are from drag strips and closed courses.
+>
+> A leaderboard's creator can mark it Unlisted (for a club or a group of friends). Unlisted leaderboards
+> are not shown in the list; people add one by tapping JOIN in the Community section and entering the
+> join code its creator shares. The same guidelines, reporting, and blocking apply to them. To try it,
+> create a leaderboard with Unlisted checked: its join code appears at the top of the leaderboard.
 >
 > Data: event results are read from the organizers' publicly available timing results through our server
 > (autox.romangarms.com). The app is independent and says so on the Setup tab; organizer names appear
 > only as labels on their own events.
 >
 > User-generated content: before their first post, users must accept community guidelines (no offensive
-> content, closed-course times only). Every leaderboard and run has a Report action (… menu), reports go to
-> a moderation queue we review within 24 hours, and offending content is removed.
-> Users can also hide any leaderboard on their device (… menu → Hide Leaderboard). Contact details are on
-> the Support page linked from the Setup tab.
+> content, closed-course times only). Posts are filtered for objectionable language on the server. Every
+> leaderboard, run, and Acceleration entry has a Report action (… menu), reports go to a moderation queue we review within 24
+> hours, offending content is removed, and whoever posted it is banned from posting.
+> Users can block a poster from the same menu (Block Creator / Block Poster): that poster's leaderboards
+> and times disappear for them at once and we are notified. Blocks are listed, and can be undone, on the
+> Setup tab. Users can also hide any leaderboard on their device (… menu → Hide Leaderboard). Contact
+> details are on the Support page linked from the Setup tab.
 >
 > The app requests no permissions in normal use. The local-network usage string exists only for a
 > developer option that points the app at a development server on the LAN.
@@ -102,12 +117,15 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 >
 > COMMUNITY LEADERBOARDS
 > • Create a leaderboard for your course, test day, or club
+> • Keep one unlisted and share its join code with just your group
 > • Post a time by hand or import it from a TrackAddict lap log
 > • Per-car entries with average and top speed
+> • Acceleration board: 0-60 and quarter-mile times from a TrackAddict drag-run log
 > • Report or hide anything that doesn't belong
 >
-> NO ACCOUNT, NO ADS, NO TRACKING
-> There is nothing to sign up for. Your pins, nicknames, and settings stay on your phone.
+> NO ADS, NO TRACKING
+> Browse without an account; Sign in with Apple only when you want to post. Your pins, nicknames, and
+> settings stay on your phone.
 >
 > AutoX Live is an independent app and is not affiliated with or endorsed by any event organizer, club,
 > or timing provider. Event results come from organizers' publicly available timing feeds and appear
@@ -130,13 +148,15 @@ trademarked terms there are a common metadata rejection.
 
 ### App Privacy answers
 
-Data is collected (the server stores posts and the device token). Conservative answers:
+Data is collected (the server stores posts, the device token, and the Apple sign-in). Conservative answers:
 
 | Data type | Collected | Linked to user | Tracking | Purpose |
 | --- | --- | --- | --- | --- |
 | User Content → Other User Content (leaderboards, times, notes) | Yes | Yes | No | App Functionality |
-| Contact Info → Name (the name/nickname typed on a post) | Yes | Yes | No | App Functionality |
+| Contact Info → Name (the name/nickname typed on a post, and the name shared at sign-in) | Yes | Yes | No | App Functionality |
 | Identifiers → Device ID (the random app-generated token) | Yes | Yes | No | App Functionality |
+| Identifiers → User ID (Apple's identifier for the signed-in Apple ID) | Yes | Yes | No | App Functionality |
+| Contact Info → Email Address (from Sign in with Apple; may be a relay address) | Yes | Yes | No | App Functionality |
 
 Everything else: not collected. The TrackAddict CSV is parsed in memory and not stored, so its GPS data
 does not count as collected location.

@@ -104,18 +104,36 @@ Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device t
 - `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`, `description`, `created_by`)
 - `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
 - `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (owner or admin; deleting removes its runs)
-- `PUT /api/leaderboard/courses/{course_id}/owner` — admin only: hand a course to a device (`device_token`, or `null` for no owner)
+- `PUT /api/leaderboard/courses/{course_id}/owner` — admin only: hand a course to someone from the users list (`person`: `{kind, id}`) or to a device (`device_token`); neither means no owner
+- `GET` / `POST /api/leaderboard/courses/{course_id}/members` and `DELETE …/members/{kind}/{id}` — admin only: list, add (`kind` of `user`/`device`, `id`) or remove the people an unlisted course exists for, without their needing the join code
 - `PUT /api/leaderboard/courses/{course_id}/hidden` and `PUT /api/leaderboard/runs/{run_id}/hidden` — admin only: hide or unhide (`hidden`: `true`/`false`); hidden rows are omitted from every non-admin response and 404 for non-admin writes
 - `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`)
 - `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
-- `POST /api/leaderboard/reports` — flag a course or run (`target_type` of `course`/`run`, `target_id`, `reason`)
+- `POST /api/leaderboard/reports` — flag a course, run, or acceleration entry (`target_type` of `course`/`run`/`acceleration`, `target_id`, `reason`)
 - `GET` / `DELETE /api/leaderboard/reports[/{report_id}]` — admin: list reports with their targets, or dismiss one
+
+Accounts and users (a device is named by its row id and an account by its user id; tokens and Apple identifiers never appear):
+
+- `POST /api/account/apple` — sign this device in (`identity_token`, the `nonce` whose SHA-256 the app gave Apple, optional `authorization_code` and `name`)
+- `GET` / `PATCH` / `DELETE /api/account` — whether this device is signed in, change the account's `name`, or delete the account and everything it posted
+- `DELETE /api/account/session` — sign this device out
+- `POST /api/account/apple/notifications` — Apple's server-to-server endpoint (`payload`, a token Apple signs); a revoked or deleted Apple ID is signed out on every device
+- `GET /api/admin/users` — admin: every account with its devices, and every device that has not signed in, with what each has posted and whether it is banned
+- `PATCH /api/admin/users/{user_id}` and `PATCH /api/admin/devices/{device_id}` — admin: set a `label`
+- `POST /api/admin/bans` — admin: ban someone from the users list (`kind`, `id`, optional `reason`); lift it with `DELETE /api/leaderboard/bans/{ban_id}`
+- `POST /api/admin/devices/{device_id}/move` — admin: file everything a signed-out device posted under an account (`user_id`)
 
 Legacy runs were set on the old, longer course; their adjusted time is scaled by `distance_miles / legacy_distance_miles`. Average speed is computed from the course distance.
 
 TrackAddict:
 
-- `POST /api/trackaddict/parse` — body is a raw TrackAddict CSV log; returns its laps with times and distances
+- `POST /api/trackaddict/parse` — body is a raw TrackAddict CSV log; returns its laps with times and distances. A lap that starts from a standstill (a drag-mode run) also carries `acceleration`: 0-30 and 0-60 interpolated from the GPS speed trace, plus the 1/8 and 1/4 mile times and trap speeds from the log's 200 m and 400 m sector markers
+
+Acceleration board:
+
+- `GET /api/acceleration` — every entry, ranked by 0-60 then 0-30
+- `POST /api/acceleration` — add an entry (signed-in device or admin; a device needs at least one time and is limited to 20 entries)
+- `PATCH` / `DELETE /api/acceleration/{entry_id}` — the poster or admin; only the admin can set `hidden`
 
 `server/import_sheet.py` seeds the leaderboard from the HWY 9 Leaderboard spreadsheet snapshot embedded in the script and is safe to re-run.
 

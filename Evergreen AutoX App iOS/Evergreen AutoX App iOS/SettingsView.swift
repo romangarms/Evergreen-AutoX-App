@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var copiedDeviceID = false
     @State private var versionTaps = 0
+    @State private var blockError: String?
 
     private static let supportURL = URL(string: "\(AppModel.defaultBaseURL)/support")!
     private static let privacyURL = URL(string: "\(AppModel.defaultBaseURL)/privacy")!
@@ -19,6 +20,11 @@ struct SettingsView: View {
         @Bindable var model = model
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("ACCOUNT")
+                    AccountSection()
+                }
+
                 if model.hiddenCourseCount > 0 {
                     VStack(alignment: .leading, spacing: 8) {
                         sectionHeader("LEADERBOARDS")
@@ -26,6 +32,35 @@ struct SettingsView: View {
                             model.unhideAllCourses()
                         }
                         .buttonStyle(EGButtonStyle())
+                    }
+                }
+
+                if !model.blocks.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionHeader("BLOCKED POSTERS")
+                        Text("You don't see leaderboards or times from these posters.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.egGrayDark)
+                        ForEach(model.blocks) { block in
+                            HStack(spacing: 8) {
+                                Text(block.label ?? "Unnamed poster")
+                                    .font(.system(size: 12.5))
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Button("UNBLOCK") {
+                                    Task {
+                                        do {
+                                            try await model.unblock(id: block.id)
+                                            blockError = nil
+                                        } catch {
+                                            blockError = error.localizedDescription
+                                        }
+                                    }
+                                }
+                                .buttonStyle(EGChipButtonStyle())
+                            }
+                        }
+                        EGErrorText(text: blockError)
                     }
                 }
 
@@ -129,6 +164,10 @@ struct SettingsView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .task {
+            await model.loadAccount()
+            await model.loadBlocks()
+        }
     }
 
     private var devSection: some View {
@@ -145,7 +184,7 @@ struct SettingsView: View {
             }
             .buttonStyle(EGChipButtonStyle())
             if model.devMode {
-                Text("The device ID is what makes leaderboards and runs yours. Anyone who has it can edit them, so only paste it into the server console.")
+                Text("The device ID is what tells the server which leaderboards and runs are yours. Anyone who has it can edit them, so only paste it into the server console.")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.egGrayDark)
                 Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {

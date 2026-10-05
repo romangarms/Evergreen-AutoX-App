@@ -115,13 +115,20 @@ struct LBCourse: Codable, Identifiable, Hashable {
     let description: String?
     let createdBy: String?
     let isOwner: Bool
+    let hasOwner: Bool
+    let unlisted: Bool
+    let isMember: Bool
+    let joinCode: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, description
+        case id, name, description, unlisted
         case distanceMiles = "distance_miles"
         case legacyDistanceMiles = "legacy_distance_miles"
         case createdBy = "created_by"
         case isOwner = "is_owner"
+        case hasOwner = "has_owner"
+        case isMember = "is_member"
+        case joinCode = "join_code"
     }
 
     // A server that predates ownership sends no is_owner; treat its
@@ -135,7 +142,15 @@ struct LBCourse: Codable, Identifiable, Hashable {
         description = try c.decodeIfPresent(String.self, forKey: .description)
         createdBy = try c.decodeIfPresent(String.self, forKey: .createdBy)
         isOwner = try c.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
+        hasOwner = try c.decodeIfPresent(Bool.self, forKey: .hasOwner) ?? false
+        unlisted = try c.decodeIfPresent(Bool.self, forKey: .unlisted) ?? false
+        isMember = try c.decodeIfPresent(Bool.self, forKey: .isMember) ?? false
+        joinCode = try c.decodeIfPresent(String.self, forKey: .joinCode)
     }
+}
+
+struct LBJoinInput: Encodable {
+    let code: String
 }
 
 struct LBCourseInput: Encodable {
@@ -143,9 +158,10 @@ struct LBCourseInput: Encodable {
     var distanceMiles: Double?
     var description: String?
     var createdBy: String?
+    var unlisted: Bool
 
     enum CodingKeys: String, CodingKey {
-        case name, description
+        case name, description, unlisted
         case distanceMiles = "distance_miles"
         case createdBy = "created_by"
     }
@@ -158,6 +174,7 @@ struct LBCourseInput: Encodable {
         try container.encode(distanceMiles, forKey: .distanceMiles)
         try container.encode(description, forKey: .description)
         try container.encodeIfPresent(createdBy, forKey: .createdBy)
+        try container.encode(unlisted, forKey: .unlisted)
     }
 }
 
@@ -183,11 +200,21 @@ struct LBRunInput: Encodable {
 enum LBReportTarget: Hashable, Identifiable {
     case course(Int)
     case run(Int)
+    case acceleration(Int)
 
-    var id: String {
+    var id: String { "\(type)-\(targetID)" }
+
+    var type: String {
         switch self {
-        case .course(let id): "course-\(id)"
-        case .run(let id): "run-\(id)"
+        case .course: "course"
+        case .run: "run"
+        case .acceleration: "acceleration"
+        }
+    }
+
+    var targetID: Int {
+        switch self {
+        case .course(let id), .run(let id), .acceleration(let id): id
         }
     }
 }
@@ -198,14 +225,8 @@ struct LBReportInput: Encodable {
     let reason: String
 
     init(target: LBReportTarget, reason: String) {
-        switch target {
-        case .course(let id):
-            targetType = "course"
-            targetId = id
-        case .run(let id):
-            targetType = "run"
-            targetId = id
-        }
+        targetType = target.type
+        targetId = target.targetID
         self.reason = reason
     }
 
@@ -216,6 +237,54 @@ struct LBReportInput: Encodable {
     }
 }
 
+struct LBBlockInput: Encodable {
+    let targetType: String
+    let targetId: Int
+
+    init(target: LBReportTarget) {
+        targetType = target.type
+        targetId = target.targetID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case targetType = "target_type"
+        case targetId = "target_id"
+    }
+}
+
+struct Account: Decodable {
+    let signedIn: Bool
+    let name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case signedIn = "signed_in"
+        case name
+    }
+}
+
+struct AppleSignInInput: Encodable {
+    let identityToken: String
+    let nonce: String
+    let authorizationCode: String?
+    let name: String?
+
+    enum CodingKeys: String, CodingKey {
+        case identityToken = "identity_token"
+        case nonce
+        case authorizationCode = "authorization_code"
+        case name
+    }
+}
+
+struct AccountNameInput: Encodable {
+    let name: String
+}
+
+struct LBBlock: Decodable, Identifiable {
+    let id: Int
+    let label: String?
+}
+
 struct TALap: Decodable, Identifiable {
     let lap: Int
     let timeSeconds: Double?
@@ -223,11 +292,12 @@ struct TALap: Decodable, Identifiable {
     let topSpeedMph: Double?
     let distanceMiles: Double?
     let avgSpeedMph: Double?
+    let acceleration: TAAcceleration?
 
     var id: Int { lap }
 
     enum CodingKeys: String, CodingKey {
-        case lap, time
+        case lap, time, acceleration
         case timeSeconds = "time_seconds"
         case topSpeedMph = "top_speed_mph"
         case distanceMiles = "distance_miles"
@@ -235,8 +305,53 @@ struct TALap: Decodable, Identifiable {
     }
 }
 
+struct TAAcceleration: Decodable {
+    let zeroTo30: Double?
+    let zeroTo60: Double?
+    let quarterMileSeconds: Double?
+    let quarterMileMph: Double?
+    let eighthMileSeconds: Double?
+    let eighthMileMph: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case zeroTo30 = "zero_to_30_seconds"
+        case zeroTo60 = "zero_to_60_seconds"
+        case quarterMileSeconds = "quarter_mile_seconds"
+        case quarterMileMph = "quarter_mile_mph"
+        case eighthMileSeconds = "eighth_mile_seconds"
+        case eighthMileMph = "eighth_mile_mph"
+    }
+}
+
 struct TAParsedLog: Decodable {
     let laps: [TALap]
+}
+
+struct AccelEntryInput: Encodable {
+    var vehicle: String
+    var year: Int?
+    var driver: String?
+    var hp: Int?
+    var weightLb: Int?
+    var zeroTo30: Double?
+    var zeroTo60: Double?
+    var quarterMileSeconds: Double?
+    var quarterMileMph: Double?
+    var eighthMileSeconds: Double?
+    var eighthMileMph: Double?
+    var notes: String?
+    var source: String
+
+    enum CodingKeys: String, CodingKey {
+        case vehicle, year, driver, hp, notes, source
+        case weightLb = "weight_lb"
+        case zeroTo30 = "zero_to_30_seconds"
+        case zeroTo60 = "zero_to_60_seconds"
+        case quarterMileSeconds = "quarter_mile_seconds"
+        case quarterMileMph = "quarter_mile_mph"
+        case eighthMileSeconds = "eighth_mile_seconds"
+        case eighthMileMph = "eighth_mile_mph"
+    }
 }
 
 struct AccelEntry: Decodable, Identifiable {
@@ -252,9 +367,16 @@ struct AccelEntry: Decodable, Identifiable {
     let quarterMileMph: Double?
     let eighthMileSeconds: Double?
     let eighthMileMph: Double?
+    let notes: String?
+    let isOwner: Bool?
+    let hasOwner: Bool?
+
+    var canBlockPoster: Bool { hasOwner == true && isOwner != true }
 
     enum CodingKeys: String, CodingKey {
-        case id, year, vehicle, driver, hp
+        case id, year, vehicle, driver, hp, notes
+        case isOwner = "is_owner"
+        case hasOwner = "has_owner"
         case weightLb = "weight_lb"
         case zeroTo30 = "zero_to_30_seconds"
         case zeroTo60 = "zero_to_60_seconds"
@@ -262,6 +384,10 @@ struct AccelEntry: Decodable, Identifiable {
         case quarterMileMph = "quarter_mile_mph"
         case eighthMileSeconds = "eighth_mile_seconds"
         case eighthMileMph = "eighth_mile_mph"
+    }
+
+    var title: String {
+        [year.map(String.init), vehicle].compactMap(\.self).joined(separator: " ")
     }
 }
 
@@ -285,6 +411,9 @@ struct LBRun: Codable, Identifiable {
     let notes: String?
     let legacy: Bool
     let isOwner: Bool
+    let hasOwner: Bool
+
+    var canBlockPoster: Bool { hasOwner && !isOwner }
 
     enum CodingKeys: String, CodingKey {
         case id, driver, vehicle, hp, time, conditions, notes, legacy
@@ -294,6 +423,7 @@ struct LBRun: Codable, Identifiable {
         case topSpeedMph = "top_speed_mph"
         case runDate = "run_date"
         case isOwner = "is_owner"
+        case hasOwner = "has_owner"
     }
 
     init(from decoder: Decoder) throws {
@@ -312,6 +442,7 @@ struct LBRun: Codable, Identifiable {
         notes = try c.decodeIfPresent(String.self, forKey: .notes)
         legacy = try c.decode(Bool.self, forKey: .legacy)
         isOwner = try c.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
+        hasOwner = try c.decodeIfPresent(Bool.self, forKey: .hasOwner) ?? false
     }
 }
 

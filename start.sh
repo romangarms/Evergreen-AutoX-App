@@ -3,6 +3,7 @@ set -e
 cd "$(dirname "$0")"
 
 ENV_FILE=.env
+APPLE_TEAM_ID_DEFAULT=98GQ88N9TN
 
 usage() {
     cat <<EOF
@@ -15,10 +16,19 @@ Usage: ./start.sh [command]
   local          Always run from the local virtualenv (foreground), creating
                  .venv on first use. Handy for development.
   set-password   Set or change the leaderboard admin username/password in .env.
+  read-key       Print the key the website sends to read unlisted leaderboards.
+  new-read-key   Replace that key. The website stops seeing unlisted boards
+                 until it is rebuilt with the new one.
+  apple-key FILE [KEY_ID]
+                 Store a Sign in with Apple key (the AuthKey_XXXXXXXXXX.p8
+                 downloaded from the developer portal) so deleting an account
+                 revokes its Apple sign-in. The key ID is read from the file
+                 name unless given.
   help           Show this message.
 
-Credentials live in $ENV_FILE (gitignored) as LEADERBOARD_ADMIN_USER and
-LEADERBOARD_ADMIN_PASSWORD. Restart the server after changing them.
+Credentials live in $ENV_FILE (gitignored) as LEADERBOARD_ADMIN_USER,
+LEADERBOARD_ADMIN_PASSWORD, LEADERBOARD_READ_KEY and the APPLE_ values. Restart
+the server after changing them.
 EOF
 }
 
@@ -74,6 +84,52 @@ ensure_password() {
     has_password || prompt_credentials
 }
 
+write_read_key() {
+    local tmp
+    tmp=$(mktemp)
+    if [ -f "$ENV_FILE" ]; then
+        grep -v '^LEADERBOARD_READ_KEY=' "$ENV_FILE" > "$tmp" || true
+    fi
+    printf "LEADERBOARD_READ_KEY='%s'\n" "$(openssl rand -hex 24)" >> "$tmp"
+    mv "$tmp" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+}
+
+ensure_read_key() {
+    [ -n "$(env_value LEADERBOARD_READ_KEY)" ] || write_read_key
+}
+
+write_apple_key() {
+    local file=$1 key_id=$2 name tmp
+    if [ -z "$file" ] || [ ! -f "$file" ]; then
+        echo "Usage: ./start.sh apple-key path/to/AuthKey_XXXXXXXXXX.p8 [KEY_ID]" >&2
+        exit 1
+    fi
+    if ! openssl pkey -in "$file" -noout 2>/dev/null; then
+        echo "$file is not a private key. It should be the .p8 file from the developer portal." >&2
+        exit 1
+    fi
+    if [ -z "$key_id" ]; then
+        name=$(basename "$file" .p8)
+        key_id=${name#AuthKey_}
+    fi
+    if [[ ! "$key_id" =~ ^[A-Z0-9]{10}$ ]]; then
+        echo "Could not read a 10-character key ID from the file name; pass it as the second argument." >&2
+        exit 1
+    fi
+    tmp=$(mktemp)
+    if [ -f "$ENV_FILE" ]; then
+        grep -v '^APPLE_\(TEAM_ID\|KEY_ID\|PRIVATE_KEY\)=' "$ENV_FILE" > "$tmp" || true
+    fi
+    # The whole PEM, BEGIN and END lines included, on one line with a literal
+    # \n at each line break; server/apple.py turns those back into newlines.
+    printf "APPLE_TEAM_ID='%s'\nAPPLE_KEY_ID='%s'\nAPPLE_PRIVATE_KEY='%s'\n" \
+        "$APPLE_TEAM_ID_DEFAULT" "$key_id" "$(awk 'NF {printf "%s\\n", $0}' "$file")" >> "$tmp"
+    mv "$tmp" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    echo "Saved key $key_id to $ENV_FILE. Restart the server to pick it up (./start.sh)."
+}
+
 ensure_venv() {
     if [ ! -d .venv ]; then
         echo "Creating virtualenv and installing dependencies..."
@@ -98,6 +154,7 @@ run_local() {
 case "${1:-start}" in
     start)
         ensure_password
+        ensure_read_key
         if docker compose version >/dev/null 2>&1; then
             echo "Starting with Docker Compose..."
             docker compose up -d --build
@@ -108,11 +165,24 @@ case "${1:-start}" in
         ;;
     local)
         ensure_password
+        ensure_read_key
         run_local
         ;;
     set-password)
         prompt_credentials
         echo "Restart the server to pick up the change (./start.sh)."
+        ;;
+    read-key)
+        ensure_read_key
+        env_value LEADERBOARD_READ_KEY
+        ;;
+    new-read-key)
+        write_read_key
+        env_value LEADERBOARD_READ_KEY
+        echo "Restart the server (./start.sh), then rebuild the website with this key." >&2
+        ;;
+    apple-key)
+        write_apple_key "$2" "$3"
         ;;
     help|-h|--help)
         usage

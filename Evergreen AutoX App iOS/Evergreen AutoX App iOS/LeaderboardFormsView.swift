@@ -80,16 +80,19 @@ struct EGErrorText: View {
 }
 
 // Apple's user-generated-content rules want posters to agree to terms
-// before their first post; the gate shows them once per device.
+// before their first post; the gate shows them once per device. Posting
+// also needs an account, which the server enforces.
 struct GuidelinesGate<Content: View>: View {
     @Environment(AppModel.self) private var model
     @ViewBuilder let content: Content
 
     var body: some View {
-        if model.acceptedGuidelines {
-            content
-        } else {
+        if !model.acceptedGuidelines {
             GuidelinesView()
+        } else if !model.signedIn {
+            SignInView()
+        } else {
+            content
         }
     }
 }
@@ -101,7 +104,7 @@ struct GuidelinesView: View {
         "Only post times set on closed courses, private property, or at sanctioned events. Never from public roads.",
         "Use your real name or a nickname. No offensive names, notes, or leaderboard titles.",
         "Everything you post is public and can be seen by anyone using the app.",
-        "Leaderboards or runs that break these rules can be reported by anyone and will be removed.",
+        "Anything posted that breaks these rules can be reported by anyone and will be removed, and whoever posted it can be banned from posting.",
     ]
 
     var body: some View {
@@ -143,11 +146,13 @@ struct CourseFormView: View {
     @State private var distance: String
     @State private var description: String
     @State private var creator = ""
+    @State private var unlisted: Bool
     @State private var error: String?
     @State private var saving = false
 
     init(editing: LBCourse? = nil) {
         self.editing = editing
+        _unlisted = State(initialValue: editing?.unlisted ?? false)
         _name = State(initialValue: editing?.name ?? "")
         _distance = State(initialValue: editing?.distanceMiles.map { Self.trim($0) } ?? "")
         _description = State(initialValue: editing?.description ?? "")
@@ -158,11 +163,26 @@ struct CourseFormView: View {
             title: editing == nil ? "New Leaderboard" : "Edit Leaderboard",
             subtitle: editing == nil ? "Anyone can post times to it. You can edit or delete it later." : nil
         ) {
-            EGFormField(label: "NAME", placeholder: "Skidpad to 4 Corners", text: $name)
+            EGFormField(label: "NAME", placeholder: "Airfield Test Day", text: $name)
             EGFormField(label: "COURSE LENGTH (MILES, OPTIONAL)", placeholder: "1.65", text: $distance, keyboard: .decimalPad)
             EGFormField(label: "DESCRIPTION (OPTIONAL)", placeholder: "Where it starts and ends, rules, anything else", text: $description, capitalization: .sentences)
             if editing == nil {
                 EGFormField(label: "YOUR NAME", placeholder: "Shown as the creator", text: $creator)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    unlisted.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        EGCheckbox(checked: unlisted, size: 18)
+                        Text("UNLISTED")
+                    }
+                }
+                .buttonStyle(EGChipButtonStyle())
+                Text("An unlisted leaderboard stays out of the list in the app. People add it with a join code you share with them.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.egGrayDark)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             EGErrorText(text: error)
             Button(editing == nil ? "CREATE LEADERBOARD" : "SAVE CHANGES") {
@@ -200,7 +220,8 @@ struct CourseFormView: View {
             name: name,
             distanceMiles: distanceMiles,
             description: description.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            createdBy: creator.nilIfEmpty
+            createdBy: creator.nilIfEmpty,
+            unlisted: unlisted
         )
         saving = true
         error = nil
@@ -437,6 +458,48 @@ struct RunFormView: View {
     }
 }
 
+struct JoinCourseSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var code = ""
+    @State private var error: String?
+    @State private var joining = false
+
+    var body: some View {
+        EGSheetFrame(title: "Join a Leaderboard", subtitle: "Unlisted leaderboards are added with a join code.") {
+            Text("Ask whoever runs the leaderboard for its code. They can find it at the top of the leaderboard.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+            EGFormField(label: "JOIN CODE", placeholder: "ABCD2345", text: $code, capitalization: .characters)
+            EGErrorText(text: error)
+            Button("JOIN") {
+                Task { await join() }
+            }
+            .buttonStyle(EGButtonStyle(kind: .primary))
+            .disabled(joining)
+        }
+    }
+
+    private func join() async {
+        let code = code.trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty else {
+            error = "Enter the join code."
+            return
+        }
+        joining = true
+        error = nil
+        do {
+            try await model.joinCourse(code: code)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        joining = false
+    }
+}
+
 struct ReportSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -450,7 +513,7 @@ struct ReportSheet: View {
 
     var body: some View {
         EGSheetFrame(title: "Report", subtitle: subject) {
-            Text("Tell us what's wrong. Reports go to the app's maintainer, who can remove the leaderboard or run.")
+            Text("Tell us what's wrong. Reports go to the app's maintainer, who can remove anything that breaks the guidelines.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)

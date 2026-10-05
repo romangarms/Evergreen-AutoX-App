@@ -31,6 +31,7 @@ final class AppModel {
         case leaderboard(Int)
         case leaderboardDriver(Int, Int)
         case acceleration
+        case accelerationEntry(Int)
     }
 
     static let defaultOrgID = 151294
@@ -73,6 +74,8 @@ final class AppModel {
     var leaderboardCourses: [LBCourse] = []
     var leaderboardDetail: LBCourseDetail?
     var leaderboardError: String?
+    var blocks: [LBBlock] = []
+    var account: Account?
     var accelerationEntries: [AccelEntry]?
     var accelerationError: String?
     var sessions: [SHSession] = []
@@ -102,8 +105,9 @@ final class AppModel {
     var orgIDString: String {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
     }
-    // The name last posted with, offered as the default next time. Nothing
-    // else edits it, so every post has to refresh it or a typo would stick.
+    // The name last posted with, offered as the default next time. Only the
+    // account name also sets it, so every post has to refresh it or a typo
+    // would stick.
     var posterName: String {
         didSet { defaults.set(posterName, forKey: "posterName") }
     }
@@ -445,7 +449,9 @@ final class AppModel {
 
     func start() async {
         guard events.isEmpty else { return }
+        async let accountTask: Void = loadAccount()
         await loadEvents()
+        await accountTask
     }
 
     func loadEvents() async {
@@ -544,6 +550,20 @@ final class AppModel {
         leaveLeaderboard(id)
     }
 
+    func joinCourse(code: String) async throws {
+        let course = try await client.joinCourse(code: code)
+        hiddenCourseIDs.remove(course.id)
+        await refreshLeaderboardEvents()
+        open(screen: .leaderboard(course.id))
+        tab = .events
+    }
+
+    func leaveCourse(id: Int) async throws {
+        try await client.leaveCourse(id: id)
+        await refreshLeaderboardEvents()
+        leaveLeaderboard(id)
+    }
+
     func hideCourse(id: Int) {
         hiddenCourseIDs.insert(id)
         events.removeAll { $0.id == Self.leaderboardEventID(courseID: id) }
@@ -580,6 +600,118 @@ final class AppModel {
 
     func report(_ target: LBReportTarget, reason: String) async throws {
         try await client.report(LBReportInput(target: target, reason: reason))
+    }
+
+    // The server stops sending anything the blocked poster owns, so the open
+    // board is reloaded, or left if it was theirs.
+    func blockPoster(_ target: LBReportTarget, courseID: Int) async throws {
+        let block = try await client.block(LBBlockInput(target: target))
+        blocks.removeAll { $0.id == block.id }
+        blocks.insert(block, at: 0)
+        await refreshLeaderboardEvents()
+        if leaderboardCourses.contains(where: { $0.id == courseID }) {
+            switch screen {
+            case .leaderboard(courseID), .leaderboardDriver(courseID, _):
+                screen = .leaderboard(courseID)
+                loadLeaderboard(courseID: courseID)
+            default:
+                break
+            }
+        } else {
+            leaveLeaderboard(courseID)
+        }
+    }
+
+    func addAcceleration(_ input: AccelEntryInput) async throws {
+        _ = try await client.createAcceleration(input)
+        loadAcceleration()
+    }
+
+    func deleteAcceleration(id: Int) async throws {
+        try await client.deleteAcceleration(id: id)
+        accelerationEntries?.removeAll { $0.id == id }
+        screen = .acceleration
+        loadAcceleration()
+    }
+
+    func blockAccelerationPoster(entryID: Int) async throws {
+        let block = try await client.block(LBBlockInput(target: .acceleration(entryID)))
+        blocks.removeAll { $0.id == block.id }
+        blocks.insert(block, at: 0)
+        accelerationEntries?.removeAll { $0.id == entryID }
+        screen = .acceleration
+        loadAcceleration()
+        await refreshLeaderboardEvents()
+    }
+
+    func unblock(id: Int) async throws {
+        try await client.unblock(id: id)
+        blocks.removeAll { $0.id == id }
+        await refreshLeaderboardEvents()
+    }
+
+    var signedIn: Bool { account?.signedIn == true }
+
+    func loadAccount() async {
+        if let loaded = try? await client.account() {
+            account = loaded
+        }
+    }
+
+    func signIn(identityToken: String, nonce: String, authorizationCode: String?, name: String?) async throws {
+        account = try await client.signInWithApple(
+            AppleSignInInput(identityToken: identityToken, nonce: nonce, authorizationCode: authorizationCode, name: name)
+        )
+        if posterName.isEmpty, let name = account?.name {
+            posterName = name
+        }
+        await refreshOwnership()
+    }
+
+    func updateAccountName(_ name: String) async throws {
+        account = try await client.updateAccount(name: name)
+        if let name = account?.name {
+            posterName = name
+        }
+    }
+
+    func signOut() async throws {
+        account = try await client.signOut()
+        await refreshOwnership()
+    }
+
+    func deleteAccount() async throws {
+        account = try await client.deleteAccount()
+        await refreshOwnership()
+    }
+
+    // Signing in or out changes which boards, runs and blocks the server
+    // counts as this device's, so whatever is on screen is refetched. A board
+    // that went with the account is left.
+    private func refreshOwnership() async {
+        await refreshLeaderboardEvents()
+        await loadBlocks()
+        if accelerationEntries != nil {
+            loadAcceleration()
+        }
+        switch screen {
+        case .leaderboard(let courseID), .leaderboardDriver(let courseID, _):
+            guard leaderboardCourses.contains(where: { $0.id == courseID }) else {
+                leaveLeaderboard(courseID)
+                return
+            }
+            if let detail = try? await client.leaderboardCourse(id: courseID), leaderboardDetail?.course.id == courseID {
+                leaderboardDetail = detail
+            }
+        default:
+            break
+        }
+    }
+
+    func loadBlocks() async {
+        if let loaded = try? await client.blocks() {
+            blocks = loaded
+        }
     }
 
     func parseTrackAddict(csv: Data) async throws -> [TALap] {
