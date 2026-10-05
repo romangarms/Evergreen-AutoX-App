@@ -1,7 +1,10 @@
+import hashlib
+import hmac
 import os
 import re
 import secrets
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
@@ -9,7 +12,7 @@ from typing import Annotated, Literal
 import db
 import gglc
 import trackaddict
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import (
@@ -45,6 +48,8 @@ ADMIN_USER = os.environ.get("LEADERBOARD_ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("LEADERBOARD_ADMIN_PASSWORD")
 basic_auth = HTTPBasic(auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
+SESSION_COOKIE = "admin_session"
+SESSION_SECONDS = 30 * 24 * 60 * 60
 
 # The app identifies itself with a random token it generated on first launch;
 # there are no accounts. The token is the only proof of ownership, so it is
@@ -77,9 +82,34 @@ def _check_admin(credentials: HTTPBasicCredentials) -> None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
 
+# The key is derived from the credentials, so sessions survive a restart and
+# changing the password signs every browser out.
+def _sign_session(expires: int) -> str:
+    key = hashlib.sha256(
+        f"admin-session\0{ADMIN_USER}\0{ADMIN_PASSWORD}".encode()
+    ).digest()
+    signature = hmac.new(key, str(expires).encode(), hashlib.sha256).hexdigest()
+    return f"{expires}.{signature}"
+
+
+def _session_valid(request: Request, cookie: str) -> bool:
+    if not ADMIN_PASSWORD:
+        return False
+    # SameSite does not stop other romangarms.com subdomains from sending the
+    # cookie. Browsers omit the header on plain-HTTP LAN addresses.
+    if request.headers.get("sec-fetch-site", "same-origin") != "same-origin":
+        return False
+    expires = cookie.partition(".")[0]
+    if not (expires.isascii() and expires.isdigit()) or int(expires) < time.time():
+        return False
+    return secrets.compare_digest(cookie.encode(), _sign_session(int(expires)).encode())
+
+
 def get_actor(
+    request: Request,
     basic: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
     bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_auth)],
+    session: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
 ) -> Actor:
     if basic is not None:
         _check_admin(basic)
@@ -88,6 +118,8 @@ def get_actor(
         if not DEVICE_TOKEN.match(bearer.credentials):
             raise HTTPException(status_code=401, detail="Malformed device token")
         return Actor(device_id=bearer.credentials)
+    if session is not None and _session_valid(request, session):
+        return Actor(is_admin=True)
     return Actor()
 
 
@@ -109,6 +141,38 @@ def require_admin(actor: Annotated[Actor, Depends(get_actor)]) -> Actor:
 ActorDep = Annotated[Actor, Depends(get_actor)]
 WriterDep = Annotated[Actor, Depends(require_actor)]
 AdminDep = Annotated[Actor, Depends(require_admin)]
+
+
+@app.get("/api/admin/session")
+def get_admin_session(actor: ActorDep):
+    return {"user": ADMIN_USER if actor.is_admin else None}
+
+
+@app.post("/api/admin/session")
+def create_admin_session(
+    request: Request,
+    response: Response,
+    basic: Annotated[HTTPBasicCredentials | None, Depends(basic_auth)],
+):
+    if basic is None:
+        raise HTTPException(status_code=401, detail="Admin login required")
+    _check_admin(basic)
+    response.set_cookie(
+        SESSION_COOKIE,
+        _sign_session(int(time.time()) + SESSION_SECONDS),
+        max_age=SESSION_SECONDS,
+        httponly=True,
+        samesite="strict",
+        # The reverse proxy terminates TLS; plain HTTP is only LAN development.
+        secure=request.headers.get("x-forwarded-proto", request.url.scheme) == "https",
+    )
+    return {"user": ADMIN_USER}
+
+
+@app.delete("/api/admin/session")
+def delete_admin_session(response: Response):
+    response.delete_cookie(SESSION_COOKIE)
+    return {"user": None}
 
 
 def _raw_laps(session_id: int) -> list:

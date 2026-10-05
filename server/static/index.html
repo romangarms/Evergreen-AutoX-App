@@ -338,20 +338,16 @@ document.querySelectorAll("nav button").forEach(btn => {
   };
 });
 
-const AUTH_KEY = "lb-auth";
-const auth = {
-  get token() { try { return sessionStorage.getItem(AUTH_KEY); } catch { return null; } },
-  get user() { const t = this.token; return t ? atob(t).split(":")[0] : null; },
-  set(user, pass) { try { sessionStorage.setItem(AUTH_KEY, btoa(`${user}:${pass}`)); } catch {} },
-  clear() { try { sessionStorage.removeItem(AUTH_KEY); } catch {} },
-};
+// The login itself is an HttpOnly cookie the page cannot read; this only
+// mirrors whether the server accepted it.
+let adminUser = null;
 
 const loginDialog = $("login");
 let loginPending = null;
 function promptLogin(message = "") {
   if (loginPending) return loginPending;
   $("login-error").textContent = message;
-  $("login-user").value = auth.user || "admin";
+  $("login-user").value ||= "admin";
   $("login-pass").value = "";
   loginDialog.showModal();
   $("login-pass").focus();
@@ -363,22 +359,21 @@ function promptLogin(message = "") {
   });
   return loginPending;
 }
-// The reports list is admin-only, so fetching it proves the credentials.
-async function checkAdmin() {
-  if (!auth.token) return "";
-  const res = await fetch("/api/leaderboard/reports", { headers: { Authorization: "Basic " + auth.token } });
-  if (res.ok) return "";
-  let detail = "";
-  try { detail = (await res.json()).detail; } catch {}
-  return res.status === 401 ? "Wrong username or password." : (detail || `Server returned ${res.status}`);
+async function signIn(user, pass) {
+  const res = await fetch("/api/admin/session", {
+    method: "POST",
+    headers: { Authorization: "Basic " + btoa(`${user}:${pass}`) },
+  });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (res.ok) { adminUser = data.user; return ""; }
+  return res.status === 401 ? "Wrong username or password." : (data?.detail || `Server returned ${res.status}`);
 }
 
 $("login-form").onsubmit = async e => {
   e.preventDefault();
-  auth.set($("login-user").value.trim(), $("login-pass").value);
-  const problem = await checkAdmin();
+  const problem = await signIn($("login-user").value.trim(), $("login-pass").value);
   if (problem) {
-    auth.clear();
     $("login-error").textContent = problem;
     $("login-pass").select();
     return;
@@ -390,9 +385,10 @@ $("login-form").onsubmit = async e => {
   resetAcceleration();
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
-$("auth-btn").onclick = () => {
-  if (!auth.token) { promptLogin(); return; }
-  auth.clear();
+$("auth-btn").onclick = async () => {
+  if (!adminUser) { promptLogin(); return; }
+  await fetch("/api/admin/session", { method: "DELETE" });
+  adminUser = null;
   renderAuth();
   // Hiding the admin panels is not enough; what they loaded has to go too.
   $("report-list").innerHTML = "";
@@ -401,23 +397,21 @@ $("auth-btn").onclick = () => {
   resetAcceleration();
 };
 function renderAuth() {
-  $("auth-btn").textContent = auth.token ? `Sign out (${auth.user})` : "Sign in";
-  document.body.classList.toggle("admin", !!auth.token);
+  $("auth-btn").textContent = adminUser ? `Sign out (${adminUser})` : "Sign in";
+  document.body.classList.toggle("admin", !!adminUser);
 }
 renderAuth();
 
 async function api(url, opts = {}) {
   setStatus((opts.method || "GET") + " " + url + " ...");
-  const headers = { ...(opts.headers || {}) };
-  if (auth.token) headers.Authorization = "Basic " + auth.token;
-  const res = await fetch(url, { ...opts, headers });
+  const res = await fetch(url, opts);
   let data;
   try { data = await res.json(); } catch { data = null; }
   if (res.status === 401) {
-    const hadToken = !!auth.token;
-    auth.clear();
+    const expired = !!adminUser;
+    adminUser = null;
     renderAuth();
-    if (await promptLogin(hadToken ? "Wrong username or password." : "")) return api(url, opts);
+    if (await promptLogin(expired ? "Your session expired." : "")) return api(url, opts);
     setStatus(`${res.status} ${url}: sign in to edit`, true);
     throw new Error(url);
   }
@@ -910,10 +904,8 @@ async function loadGglcEvent(date) {
   });
 }
 
-// A saved login is checked before the first request, so a stale one signs
-// out quietly instead of greeting the visitor with a password prompt.
-checkAdmin().catch(() => "").then(problem => {
-  if (problem) { auth.clear(); renderAuth(); }
+fetch("/api/admin/session").then(res => res.json()).then(data => { adminUser = data.user; }).catch(() => {}).finally(() => {
+  renderAuth();
   loadCourses();
 });
 </script>
