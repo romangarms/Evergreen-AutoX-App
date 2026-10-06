@@ -42,6 +42,51 @@ extension Color {
     static let egDivider = Color.egInk.opacity(0.4)
 }
 
+// Sizes throughout are tuned for the default text size; this is how far the
+// system text size setting has moved them.
+@propertyWrapper
+struct EGTextScale: DynamicProperty {
+    @ScaledMetric(relativeTo: .body) private var hundred: CGFloat = 100
+
+    var wrappedValue: CGFloat { hundred / 100 }
+}
+
+private struct EGFont: ViewModifier {
+    @EGTextScale private var scale
+    let size: CGFloat
+    let weight: Font.Weight
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size * scale, weight: weight))
+    }
+}
+
+private struct EGWidth: ViewModifier {
+    @EGTextScale private var scale
+    let width: CGFloat
+    let alignment: Alignment
+
+    func body(content: Content) -> some View {
+        content.frame(width: width * scale, alignment: alignment)
+    }
+}
+
+extension View {
+    func egFont(_ size: CGFloat, weight: Font.Weight = .regular) -> some View {
+        modifier(EGFont(size: size, weight: weight))
+    }
+
+    // For table columns, which have to widen with the text they hold.
+    func egWidth(_ width: CGFloat, alignment: Alignment = .center) -> some View {
+        modifier(EGWidth(width: width, alignment: alignment))
+    }
+}
+
+extension EnvironmentValues {
+    // Tables on a phone run out of room for every column once text grows.
+    var egLargeText: Bool { dynamicTypeSize > .xLarge }
+}
+
 struct EGTag: View {
     let text: String
     var background = Color.egRed
@@ -50,7 +95,7 @@ struct EGTag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: size, weight: .heavy))
+            .egFont(size, weight: .heavy)
             .kerning(1.1)
             .foregroundStyle(foreground)
             .padding(.horizontal, 6)
@@ -64,7 +109,7 @@ struct EGOutlineTag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .heavy))
+            .egFont(10, weight: .heavy)
             .kerning(0.8)
             .foregroundStyle(Color.egInk)
             .padding(.horizontal, 6)
@@ -79,7 +124,7 @@ struct EGColumnLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: size, weight: .heavy))
+            .egFont(size, weight: .heavy)
             .kerning(0.9)
             .foregroundStyle(Color.egGray)
     }
@@ -91,7 +136,7 @@ struct EGButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .heavy))
+            .egFont(12, weight: .heavy)
             .kerning(0.8)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
@@ -111,7 +156,7 @@ struct EGChipButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 10.5, weight: .heavy))
+            .egFont(10.5, weight: .heavy)
             .kerning(0.9)
             .lineLimit(1)
             .foregroundStyle(tint)
@@ -135,7 +180,7 @@ struct EGCheckbox: View {
                 .background(checked ? Color.egRed : Color.egCard)
             if checked {
                 Image(systemName: "checkmark")
-                    .font(.system(size: size * 0.5, weight: .black))
+                    .egFont(size * 0.5, weight: .black)
                     .foregroundStyle(Color.egOnRed)
             }
         }
@@ -151,7 +196,7 @@ struct EGBackButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .heavy))
+                    .egFont(11, weight: .heavy)
                 Text(label)
             }
         }

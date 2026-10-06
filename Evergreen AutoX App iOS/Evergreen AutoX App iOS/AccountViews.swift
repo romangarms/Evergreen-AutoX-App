@@ -53,7 +53,7 @@ struct AppleSignInButton: View {
         .sheet(isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             EGSheetFrame(title: "Choose a Username", subtitle: "One more step to finish signing in.") {
                 Text("Your username identifies your account to the people who run the leaderboards. Other users don't see it; the name on each post is still yours to type.")
-                    .font(.system(size: 13))
+                    .egFont(13)
                     .fixedSize(horizontal: false, vertical: true)
                 EGFormField(label: "USERNAME", placeholder: "Your name or a nickname", text: $username)
                 EGErrorText(text: usernameMessage)
@@ -123,7 +123,7 @@ struct SignInView: View {
     var body: some View {
         EGSheetFrame(title: "Sign In to Post", subtitle: "Browsing never needs an account.") {
             Text("Signing in with Apple ties your leaderboards and times to you instead of this phone, so you can still edit them after a reinstall or on a new phone.")
-                .font(.system(size: 13))
+                .egFont(13)
                 .fixedSize(horizontal: false, vertical: true)
             AppleSignInButton()
         }
@@ -142,7 +142,7 @@ struct UsernameView: View {
     var body: some View {
         EGSheetFrame(title: "Choose a Username", subtitle: "One more step before you post.") {
             Text("Your username identifies your account to the people who run the leaderboards. Other users don't see it; the name on each post is still yours to type.")
-                .font(.system(size: 13))
+                .egFont(13)
                 .fixedSize(horizontal: false, vertical: true)
             EGFormField(label: "USERNAME", placeholder: "Your name or a nickname", text: $username)
             EGErrorText(text: message)
@@ -173,23 +173,25 @@ struct AccountSection: View {
     @State private var confirmingDelete = false
     @State private var message: String?
     @State private var name = ""
+    @FocusState private var nameFocused: Bool
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         if model.signedIn {
             Text("Signed in with Apple. Your username identifies your account and is filled in as your name when you post; other users only see the name on each post.")
-                .font(.system(size: 11))
+                .egFont(11)
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 TextField("Username (needed to post)", text: $name)
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .autocorrectionDisabled()
                     .padding(.horizontal, 9)
                     .padding(.vertical, 7)
                     .background(Color.egCard)
                     .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                    .focused($nameFocused)
                     .onSubmit(saveName)
                 Button("SAVE", action: saveName)
                     .buttonStyle(EGChipButtonStyle())
@@ -228,7 +230,7 @@ struct AccountSection: View {
             EGErrorText(text: message)
         } else {
             Text("Sign in to post, and to keep your leaderboards and times if you reinstall or change phones.")
-                .font(.system(size: 11))
+                .egFont(11)
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
             AppleSignInButton()
@@ -236,6 +238,7 @@ struct AccountSection: View {
     }
 
     private func saveName() {
+        nameFocused = false
         guard !trimmedName.isEmpty else { return }
         run { try await model.updateAccountName(trimmedName) }
     }

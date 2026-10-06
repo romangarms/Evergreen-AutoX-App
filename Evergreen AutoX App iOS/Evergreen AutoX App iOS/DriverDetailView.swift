@@ -3,6 +3,7 @@ import SwiftUI
 struct DriverDetailView: View {
     @Environment(AppModel.self) private var model
     let position: Int
+    @State private var pickingMe = false
 
     var body: some View {
         if let driver = model.driver(at: position) {
@@ -19,27 +20,25 @@ struct DriverDetailView: View {
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
-                EGBackButton(label: model.tab == .friends ? "FRIENDS" : "RESULTS") {
-                    model.goBack()
-                }
-
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(nickname ?? driver.name)
-                            .font(.system(size: 24, weight: .heavy))
+                            .egFont(24, weight: .heavy)
                             .lineLimit(2)
                         if isMe {
                             EGTag(text: "ME", background: .egInk, foreground: .egBg, size: 9)
                         }
                         if model.pins.contains(driver.startNumber) {
                             Image(systemName: "star.fill")
-                                .font(.system(size: 13))
+                                .egFont(13)
                                 .foregroundStyle(Color.egRed)
                         }
                     }
-                    Text(nickname != nil ? driver.name : "No nickname yet")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.egGrayDark)
+                    if nickname != nil {
+                        Text(driver.name)
+                            .egFont(12)
+                            .foregroundStyle(Color.egGrayDark)
+                    }
                     HStack(spacing: 6) {
                         if let carClass = driver.carClass {
                             EGTag(text: carClass, size: 10)
@@ -52,7 +51,7 @@ struct DriverDetailView: View {
                 if model.isRenaming {
                     HStack(spacing: 8) {
                         TextField("Nickname", text: $model.renameText)
-                            .font(.system(size: 13))
+                            .egFont(13)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
                             .background(Color.egCard)
@@ -64,19 +63,43 @@ struct DriverDetailView: View {
                 }
 
                 statsGrid(driver)
-                runsTable(driver)
 
-                if !isMe, let me = model.me {
+                if !isMe {
                     Button("COMPARE VS ME") {
-                        model.open(screen: .compare(me.position, driver.position))
+                        if let me = model.me {
+                            model.open(screen: .compare(me.position, driver.position))
+                        } else {
+                            pickingMe = true
+                        }
                     }
                     .buttonStyle(EGButtonStyle(kind: .primary))
                 }
+
+                runsTable(driver)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $pickingMe) {
+            EGSheetFrame(
+                title: "Which driver is you?",
+                subtitle: "Tap yourself to compare with \(model.displayName(driver)). Change it later from the ⋯ menu on any driver."
+            ) {
+                VStack(spacing: 0) {
+                    ForEach(model.drivers) { candidate in
+                        ResultRowView(driver: candidate, showsPin: false) {
+                            model.meNumber = candidate.startNumber
+                            pickingMe = false
+                            if candidate.position != driver.position {
+                                model.open(screen: .compare(candidate.position, driver.position))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, -16)
+            }
         }
     }
 
@@ -90,12 +113,12 @@ struct DriverDetailView: View {
         var rows: [[(String, String, Color)]] = [
             [
                 ("BEST", driver.bestString, .egRed),
-                ("AVERAGE", driver.average.map { LapTime.format($0) } ?? "—", .egInk),
-                ("SPREAD", driver.spread.map { String(format: "%.2fs", $0) } ?? "—", .egInk),
-            ],
-            [
                 ("IN CLASS", driver.positionInClass.map { "P\($0) / \(classCount)" } ?? "—", .egInk),
                 ("OVERALL", "P\(driver.position) / \(model.drivers.count)", .egInk),
+            ],
+            [
+                ("AVERAGE", driver.average.map { LapTime.format($0) } ?? "—", .egInk),
+                ("SPREAD", driver.spread.map { String(format: "%.2fs", $0) } ?? "—", .egInk),
                 ("RUNS", "\(driver.runs.count)", .egInk),
             ],
         ]
@@ -136,7 +159,7 @@ struct EGStatsGrid: View {
                 VStack(alignment: .leading, spacing: 2) {
                     EGColumnLabel(text: stat.0, size: 9)
                     Text(stat.1)
-                        .font(.system(size: 16, weight: .heavy))
+                        .egFont(16, weight: .heavy)
                         .monospacedDigit()
                         .foregroundStyle(stat.2)
                         .lineLimit(1)
@@ -161,6 +184,7 @@ struct DriverRunsTable: View {
     var onBlock: ((Run) -> Void)?
 
     private var hasMenu: Bool { onReport != nil || onDelete != nil }
+    private var showsSpeed: Bool { driver.runs.contains { $0.speed != nil } }
 
     var body: some View {
         Section {
@@ -172,10 +196,12 @@ struct DriverRunsTable: View {
 
     private var columnLabels: some View {
         HStack(spacing: 0) {
-            EGColumnLabel(text: "RUN").frame(width: 44, alignment: .leading)
+            EGColumnLabel(text: "RUN").egWidth(44, alignment: .leading)
             EGColumnLabel(text: "TIME").frame(maxWidth: .infinity, alignment: .leading)
-            EGColumnLabel(text: "MPH").frame(width: 52, alignment: .trailing)
-            EGColumnLabel(text: "Δ BEST").frame(width: 66, alignment: .trailing)
+            if showsSpeed {
+                EGColumnLabel(text: "MPH").egWidth(52, alignment: .trailing)
+            }
+            EGColumnLabel(text: "Δ BEST").egWidth(66, alignment: .trailing)
             if hasMenu {
                 Color.clear.frame(width: 30, height: 1)
             }
@@ -188,41 +214,43 @@ struct DriverRunsTable: View {
         VStack(spacing: 0) {
             if driver.runs.isEmpty {
                 Text("No runs recorded yet.")
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             }
 
             ForEach(driver.runs) { run in
-                let isBest = run.seconds == driver.best
+                let isBest = !run.dnf && run.seconds == driver.best
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 0) {
                         Text("R\(run.number)")
-                            .font(.system(size: 12, weight: .heavy))
-                            .frame(width: 44, alignment: .leading)
+                            .egFont(12, weight: .heavy)
+                            .egWidth(44, alignment: .leading)
                         Text(run.timeString)
-                            .font(.system(size: 13, weight: isBest ? .heavy : .regular))
+                            .egFont(13, weight: isBest ? .heavy : .regular)
                             .monospacedDigit()
-                            .foregroundStyle(isBest ? Color.egRed : Color.egInk)
+                            .foregroundStyle(isBest ? Color.egRed : run.dnf ? Color.egGray : Color.egInk)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(run.speed.map { String(format: "%.1f", $0) } ?? "—")
-                            .font(.system(size: 12))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.egGrayDark)
-                            .frame(width: 52, alignment: .trailing)
+                        if showsSpeed {
+                            Text(run.speed.map { String(format: "%.1f", $0) } ?? "—")
+                                .egFont(12)
+                                .monospacedDigit()
+                                .foregroundStyle(Color.egGrayDark)
+                                .egWidth(52, alignment: .trailing)
+                        }
                         Text(deltaString(run))
-                            .font(.system(size: 12, weight: isBest ? .heavy : .regular))
+                            .egFont(12, weight: isBest ? .heavy : .regular)
                             .monospacedDigit()
                             .foregroundStyle(isBest ? Color.egRed : Color.egGray)
-                            .frame(width: 66, alignment: .trailing)
+                            .egWidth(66, alignment: .trailing)
                         if hasMenu {
                             runMenu(run)
                         }
                     }
-                    if let detail = runDetail?(run) {
+                    if let detail = detail(run) {
                         Text(detail)
-                            .font(.system(size: 9.5))
+                            .egFont(9.5)
                             .foregroundStyle(Color.egGray)
                             .lineLimit(1)
                     }
@@ -263,15 +291,21 @@ struct DriverRunsTable: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 12, weight: .heavy))
+                .egFont(12, weight: .heavy)
                 .foregroundStyle(Color.egGray)
                 .frame(width: 30, height: 28, alignment: .trailing)
                 .contentShape(Rectangle())
         }
     }
 
+    private func detail(_ run: Run) -> String? {
+        let cones = run.cones == 0 ? nil : run.cones == 1 ? "+1 cone" : "+\(run.cones) cones"
+        let parts = [runDetail?(run), cones].compactMap(\.self)
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private func deltaString(_ run: Run) -> String {
-        guard let best = driver.best else { return "" }
+        guard let best = driver.best, !run.dnf else { return "" }
         if run.seconds == best { return "BEST" }
         return "+" + String(format: "%.3f", run.seconds - best)
     }

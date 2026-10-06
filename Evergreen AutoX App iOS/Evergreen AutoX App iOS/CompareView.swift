@@ -17,25 +17,23 @@ struct CompareView: View {
     private func compare(_ a: Driver, _ b: Driver) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                EGBackButton(label: "BACK") { model.goBack() }
-
                 HStack(alignment: .bottom, spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
                         EGColumnLabel(text: "#\(a.startNumber) · \(a.carClass ?? "—")", size: 10)
                             .foregroundStyle(Color.egRed)
                         Text(model.displayName(a))
-                            .font(.system(size: 16, weight: .heavy))
+                            .egFont(16, weight: .heavy)
                             .lineLimit(2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Text("VS")
-                        .font(.system(size: 12, weight: .heavy))
+                        .egFont(12, weight: .heavy)
                         .foregroundStyle(Color.egGray)
                         .padding(.bottom, 2)
                     VStack(alignment: .trailing, spacing: 1) {
                         EGColumnLabel(text: "#\(b.startNumber) · \(b.carClass ?? "—")", size: 10)
                         Text(model.displayName(b))
-                            .font(.system(size: 16, weight: .heavy))
+                            .egFont(16, weight: .heavy)
                             .multilineTextAlignment(.trailing)
                             .lineLimit(2)
                     }
@@ -66,13 +64,13 @@ struct CompareView: View {
                 let bWins = winner(row.2, over: row.1)
                 HStack(spacing: 0) {
                     Text(row.1.map(row.3) ?? "—")
-                        .font(.system(size: 12.5, weight: aWins ? .heavy : .regular))
+                        .egFont(12.5, weight: aWins ? .heavy : .regular)
                         .monospacedDigit()
                         .foregroundStyle(aWins ? Color.egRed : Color.egInk)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     EGColumnLabel(text: row.0)
                     Text(row.2.map(row.3) ?? "—")
-                        .font(.system(size: 12.5, weight: bWins ? .heavy : .regular))
+                        .egFont(12.5, weight: bWins ? .heavy : .regular)
                         .monospacedDigit()
                         .foregroundStyle(bWins ? Color.egRed : Color.egInk)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -100,9 +98,9 @@ struct CompareView: View {
                 legendItem(color: .egRed, name: model.displayName(a))
                 legendItem(color: .egInk, name: model.displayName(b))
             }
-            if a.runs.isEmpty && b.runs.isEmpty {
+            if a.timedRuns.isEmpty && b.timedRuns.isEmpty {
                 Text("No runs to chart yet.")
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
             } else {
                 runChart(a, b)
@@ -114,20 +112,20 @@ struct CompareView: View {
         HStack(spacing: 4) {
             color.frame(width: 14, height: 2)
             Text(name)
-                .font(.system(size: 9.5, weight: .heavy))
+                .egFont(9.5, weight: .heavy)
                 .foregroundStyle(Color.egGray)
                 .lineLimit(1)
         }
     }
 
     private func runChart(_ a: Driver, _ b: Driver) -> some View {
-        let all = (a.runs + b.runs).map(\.seconds)
+        let all = (a.timedRuns + b.timedRuns).map(\.seconds)
         let lo = all.min() ?? 0
         let hi = all.max() ?? 1
         let pad = max((hi - lo) * 0.18, 0.25)
 
         return Chart {
-            ForEach(a.runs) { run in
+            ForEach(a.timedRuns) { run in
                 LineMark(
                     x: .value("Run", run.number),
                     y: .value("Time", run.seconds),
@@ -139,7 +137,7 @@ struct CompareView: View {
                     .symbol(.square)
                     .symbolSize(38)
             }
-            ForEach(b.runs) { run in
+            ForEach(b.timedRuns) { run in
                 LineMark(
                     x: .value("Run", run.number),
                     y: .value("Time", run.seconds),
@@ -159,7 +157,7 @@ struct CompareView: View {
                 AxisValueLabel {
                     if let n = value.as(Int.self) {
                         Text("R\(n)")
-                            .font(.system(size: 8.5, weight: .heavy))
+                            .egFont(8.5, weight: .heavy)
                             .foregroundStyle(Color.egGray)
                     }
                 }
@@ -171,7 +169,7 @@ struct CompareView: View {
                 AxisValueLabel {
                     if let v = value.as(Double.self) {
                         Text(String(format: "%.1f", v))
-                            .font(.system(size: 8.5, weight: .bold))
+                            .egFont(8.5, weight: .bold)
                             .foregroundStyle(Color.egGray)
                     }
                 }
@@ -192,33 +190,33 @@ struct CompareView: View {
             ForEach(0..<max(a.runs.count, b.runs.count), id: \.self) { index in
                 let runA = index < a.runs.count ? a.runs[index] : nil
                 let runB = index < b.runs.count ? b.runs[index] : nil
-                let gap = runA.flatMap { ra in runB.map { rb in ra.seconds - rb.seconds } }
+                let gap: Double? = if let runA, let runB, !runA.dnf, !runB.dnf { runA.seconds - runB.seconds } else { nil }
 
                 HStack(spacing: 8) {
                     Text("R\(index + 1)")
-                        .font(.system(size: 11, weight: .heavy))
+                        .egFont(11, weight: .heavy)
                         .foregroundStyle(Color.egGray)
-                        .frame(width: 22, alignment: .leading)
+                        .egWidth(22, alignment: .leading)
                     Text(runA?.timeString ?? "—")
-                        .font(.system(size: 13, weight: (gap ?? 0) < 0 ? .heavy : .regular))
+                        .egFont(13, weight: (gap ?? 0) < 0 ? .heavy : .regular)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle((gap ?? 0) < 0 ? Color.egRed : Color.egInk)
-                        .frame(width: 62, alignment: .leading)
+                        .egWidth(62, alignment: .leading)
                     gapBar(gap)
                     Text(runB?.timeString ?? "—")
-                        .font(.system(size: 13, weight: (gap ?? 0) > 0 ? .heavy : .regular))
+                        .egFont(13, weight: (gap ?? 0) > 0 ? .heavy : .regular)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle((gap ?? 0) > 0 ? Color.egRed : Color.egInk)
-                        .frame(width: 62, alignment: .trailing)
+                        .egWidth(62, alignment: .trailing)
                     Text(gap.map { LapTime.gap($0) } ?? "—")
-                        .font(.system(size: 11))
+                        .egFont(11)
                         .monospacedDigit()
                         .foregroundStyle(Color.egGrayDark)
-                        .frame(width: 48, alignment: .trailing)
+                        .egWidth(48, alignment: .trailing)
                 }
                 .padding(.vertical, 7)
                 .overlay(alignment: .top) {

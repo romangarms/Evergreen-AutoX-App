@@ -4,13 +4,14 @@ import Observation
 @Observable
 final class AppModel {
     enum Tab: String, CaseIterable {
-        case live, friends, events, settings
+        case live, friends, events, boards, settings
 
         var label: String {
             switch self {
             case .live: "LIVE"
             case .friends: "FRIENDS"
             case .events: "EVENTS"
+            case .boards: "BOARDS"
             case .settings: "SETUP"
             }
         }
@@ -20,6 +21,7 @@ final class AppModel {
             case .live: "waveform.path.ecg"
             case .friends: "person.2"
             case .events: "calendar"
+            case .boards: "list.number"
             case .settings: "gearshape"
             }
         }
@@ -68,6 +70,9 @@ final class AppModel {
     var expandedEventSources: Set<EventSource> = []
     var speedhiveAutoXOnly: Bool {
         didSet { defaults.set(speedhiveAutoXOnly, forKey: "speedhiveAutoXOnly") }
+    }
+    var liveSortByClass: Bool {
+        didSet { defaults.set(liveSortByClass, forKey: "liveSortByClass") }
     }
     var orgName: String?
     var events: [SHEvent] = []
@@ -170,6 +175,7 @@ final class AppModel {
 
     init() {
         devMode = defaults.bool(forKey: "devMode")
+        liveSortByClass = defaults.bool(forKey: "liveSortByClass")
         speedhiveAutoXOnly = defaults.object(forKey: "speedhiveAutoXOnly") as? Bool ?? true
         customBaseURLString = defaults.string(forKey: "serverBaseURL") ?? ""
         orgIDString = defaults.string(forKey: "orgID") ?? ""
@@ -298,7 +304,9 @@ final class AppModel {
         guard let key = eventKey, !mePromptDismissedEvents.contains(key) else { return }
         mePromptDismissedEvents.append(key)
     }
-    var friends: [Driver] { drivers.filter { pins.contains($0.startNumber) } }
+    var friends: [Driver] {
+        (me.map { [$0] } ?? []) + drivers.filter { pins.contains($0.startNumber) && $0.startNumber != meNumber }
+    }
 
     func driver(at position: Int) -> Driver? {
         drivers.first { $0.position == position }
@@ -409,8 +417,12 @@ final class AppModel {
     }
 
     func goBack() {
-        screen = nil
         isRenaming = false
+        switch screen {
+        case .leaderboardDriver(let courseID, _): screen = .leaderboard(courseID)
+        case .accelerationEntry: screen = .acceleration
+        default: screen = nil
+        }
     }
 
     func togglePin(_ number: String) {
@@ -419,7 +431,7 @@ final class AppModel {
         } else {
             pins.insert(number)
         }
-        compareSelection = compareSelection.filter(pins.contains)
+        compareSelection = compareSelection.filter { pins.contains($0) || $0 == meNumber }
     }
 
     func toggleCompareSelection(_ number: String) {
@@ -523,7 +535,7 @@ final class AppModel {
         )
     }
 
-    private func refreshLeaderboardEvents() async {
+    func refreshLeaderboardEvents() async {
         let leaderboardEvents = await loadLeaderboardEvents()
         events = events.filter { $0.source != .leaderboard } + leaderboardEvents
     }
@@ -535,7 +547,7 @@ final class AppModel {
         let course = try await client.createCourse(input)
         await refreshLeaderboardEvents()
         open(screen: .leaderboard(course.id))
-        tab = .events
+        tab = .boards
     }
 
     func updateCourse(id: Int, _ input: LBCourseInput) async throws {
@@ -555,7 +567,7 @@ final class AppModel {
         hiddenCourseIDs.remove(course.id)
         await refreshLeaderboardEvents()
         open(screen: .leaderboard(course.id))
-        tab = .events
+        tab = .boards
     }
 
     func leaveCourse(id: Int) async throws {
@@ -579,7 +591,7 @@ final class AppModel {
         switch screen {
         case .leaderboard(courseID), .leaderboardDriver(courseID, _):
             screen = nil
-            tab = .events
+            tab = .boards
         default:
             break
         }

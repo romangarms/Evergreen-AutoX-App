@@ -15,6 +15,9 @@ struct RootView: View {
             tabBar
         }
         .background(Color.egBg)
+        // The tables stop fitting a phone beyond this, and the base sizes
+        // are already too small to shrink.
+        .dynamicTypeSize(.large ... .xxxLarge)
         .modifier(AppleCredentialWatcher())
         .alert("Speedhive Organization", isPresented: $showOrgPrompt) {
             TextField("\(AppModel.defaultOrgID)", text: $orgIDText)
@@ -60,8 +63,10 @@ struct RootView: View {
                 return ("FRIENDS", "Your people", sessionName, false)
             case .events:
                 return ("EVENTS", "Pick an event", nil, false)
+            case .boards:
+                return ("BOARDS", "Leaderboards", "Posted by people using the app", false)
             case .settings:
-                return ("SETUP", "Settings", nil, false)
+                return ("SETUP", "Account & app", nil, false)
             }
         }
     }
@@ -72,10 +77,11 @@ struct RootView: View {
             HStack(spacing: 8) {
                 EGTag(text: info.tag)
                 Text(info.title)
-                    .font(.system(size: 16, weight: .heavy))
+                    .egFont(16, weight: .heavy)
                     .foregroundStyle(Color.egInk)
                     .lineLimit(1)
             }
+            .padding(.trailing, hasHeaderMenu ? 40 : 0)
             if let sub = info.sub {
                 if info.changesEvent {
                     Button {
@@ -83,7 +89,7 @@ struct RootView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(sub)
-                                .font(.system(size: 11.5, weight: .semibold))
+                                .egFont(11.5, weight: .semibold)
                                 .kerning(0)
                                 .foregroundStyle(Color.egInk)
                                 .lineLimit(1)
@@ -91,18 +97,18 @@ struct RootView: View {
                             HStack(spacing: 4) {
                                 Text("CHANGE EVENT")
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .heavy))
+                                    .egFont(9, weight: .heavy)
                             }
                         }
                     }
                     .buttonStyle(EGChipButtonStyle(tint: .egRed))
-                    .padding(.top, 6)
+                    .padding(.top, 12)
                     if model.sessions.count > 1 {
                         sessionMenu
                     }
                 } else {
                     Text(sub)
-                        .font(.system(size: 11.5))
+                        .egFont(11.5)
                         .foregroundStyle(Color.egGrayDark)
                 }
             }
@@ -116,6 +122,8 @@ struct RootView: View {
                 driverMenu(driver)
             } else if model.tab == .events, model.screen == nil {
                 eventsMenu
+            } else if showsLiveMenu {
+                liveMenu
             }
         }
         .overlay(alignment: .bottom) {
@@ -140,17 +148,50 @@ struct RootView: View {
             HStack(spacing: 8) {
                 EGColumnLabel(text: "SESSION")
                 Text(model.selectedSession.map { model.sessionLabel($0) } ?? "—")
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .egFont(11.5, weight: .semibold)
                     .foregroundStyle(Color.egInk)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .heavy))
+                    .egFont(9, weight: .heavy)
                     .foregroundStyle(Color.egGray)
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .contentShape(Rectangle())
+        }
+    }
+
+    private var showsLiveMenu: Bool {
+        model.tab == .live && model.screen == nil && !model.drivers.isEmpty
+    }
+
+    private var hasHeaderMenu: Bool {
+        if case .driver = model.screen { return true }
+        return model.screen == nil && (model.tab == .events || showsLiveMenu)
+    }
+
+    private var liveMenu: some View {
+        @Bindable var model = model
+        return Menu {
+            Picker("Sort by", selection: $model.liveSortByClass) {
+                Label("Overall Position", systemImage: "list.number").tag(false)
+                Label("Class Position", systemImage: "square.stack.3d.up").tag(true)
+            }
+        } label: {
+            menuIcon
+        }
+        .padding(.trailing, 4)
+    }
+
+    private var backLabel: String? {
+        switch model.screen {
+        case .driver: model.tab == .friends ? "FRIENDS" : "RESULTS"
+        case .compare: "BACK"
+        case .leaderboard, .acceleration: "BOARDS"
+        case .leaderboardDriver: "LEADERBOARD"
+        case .accelerationEntry: "ACCELERATION"
+        case nil: nil
         }
     }
 
@@ -203,7 +244,7 @@ struct RootView: View {
 
     private var menuIcon: some View {
         Image(systemName: "ellipsis.circle")
-            .font(.system(size: 23, weight: .semibold))
+            .egFont(23, weight: .semibold)
             .foregroundStyle(Color.egInk)
             .frame(width: 48, height: 48)
             .contentShape(Rectangle())
@@ -212,15 +253,36 @@ struct RootView: View {
     private var content: some View {
         let route = NavRoute(tab: model.tab, screen: model.screen)
         nav.update(to: route)
-        return ZStack {
-            screenContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.egBg)
-                .id(route)
-                .transition(NavTransition(tracker: nav, slides: !reduceMotion))
+        return VStack(spacing: 0) {
+            if let backLabel {
+                EGBackButton(label: backLabel) {
+                    model.goBack()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+            }
+            ZStack {
+                screenContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.egBg)
+                    .id(route)
+                    .transition(NavTransition(tracker: nav, slides: !reduceMotion))
+            }
+            .clipped()
         }
-        .clipped()
         .animation(.snappy(duration: 0.3), value: route)
+        // There is no navigation stack to provide the system's edge swipe.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { drag in
+                guard model.screen != nil,
+                      drag.startLocation.x < 32,
+                      drag.translation.width > 70,
+                      abs(drag.translation.height) < drag.translation.width
+                else { return }
+                model.goBack()
+            }
+        )
     }
 
     @ViewBuilder
@@ -243,6 +305,7 @@ struct RootView: View {
             case .live: LiveView(initialOffset: model.liveScrollOffset)
             case .friends: FriendsView()
             case .events: EventsView()
+            case .boards: BoardsView()
             case .settings: SettingsView()
             }
         }
@@ -256,11 +319,13 @@ struct RootView: View {
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: tab.icon)
-                            .font(.system(size: 16, weight: .semibold))
+                            .egFont(16, weight: .semibold)
                             .frame(height: 18)
                         Text(tab.label)
-                            .font(.system(size: 8.5, weight: .heavy))
+                            .egFont(8.5, weight: .heavy)
                             .kerning(0.9)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 9)

@@ -501,9 +501,12 @@ struct Run: Identifiable {
     let seconds: Double
     let speed: Double?
     let timeOfDay: Date?
+    var cones = 0
+    // A DNF has no time; `seconds` is 0 and it stays out of every statistic.
+    var dnf = false
 
     var id: Int { lapNumber }
-    var timeString: String { LapTime.format(seconds) }
+    var timeString: String { dnf ? "DNF" : LapTime.format(seconds) }
 }
 
 struct Driver: Identifiable {
@@ -519,22 +522,25 @@ struct Driver: Identifiable {
 
     var id: Int { position }
 
+    var timedRuns: [Run] { runs.filter { !$0.dnf } }
+
     var best: Double? {
-        runs.map(\.seconds).min() ?? LapTime.seconds(from: bestTimeString)
+        timedRuns.map(\.seconds).min() ?? LapTime.seconds(from: bestTimeString)
     }
 
     var officialBest: Double? {
-        runs.first { $0.number == officialRunNumber }?.seconds
+        timedRuns.first { $0.number == officialRunNumber }?.seconds
     }
 
     var bestString: String { best.map(LapTime.format) ?? "—" }
 
     var average: Double? {
-        runs.isEmpty ? nil : runs.map(\.seconds).reduce(0, +) / Double(runs.count)
+        timedRuns.isEmpty ? nil : timedRuns.map(\.seconds).reduce(0, +) / Double(timedRuns.count)
     }
 
     var spread: Double? {
-        guard let lo = runs.map(\.seconds).min(), let hi = runs.map(\.seconds).max(), runs.count > 1 else { return nil }
+        let times = timedRuns.map(\.seconds)
+        guard let lo = times.min(), let hi = times.max(), times.count > 1 else { return nil }
         return hi - lo
     }
 
@@ -563,8 +569,11 @@ struct Driver: Identifiable {
         officialRunNumber = gglc.runs.first { $0.best && $0.total != nil }?.run
         bestTimeString = nil
         runs = gglc.runs.compactMap { run in
+            if run.dnf {
+                return Run(number: run.run, lapNumber: run.run, seconds: 0, speed: nil, timeOfDay: nil, dnf: true)
+            }
             guard let total = run.total else { return nil }
-            return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil)
+            return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil, cones: run.cones)
         }
     }
 

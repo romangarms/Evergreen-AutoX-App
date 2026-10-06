@@ -58,6 +58,13 @@
   #lb-layout { display: flex; gap: 1rem; align-items: flex-start; }
   #lb-sidebar { width: 230px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1rem; }
   #lb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+  #mod-layout { display: flex; gap: 1rem; align-items: flex-start; }
+  #mod-side { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1rem; }
+  #mod-users { flex: 1; min-width: 0; }
+  #tab-moderation ul.picklist { max-height: 70vh; }
+  #tab-moderation ul.picklist li { white-space: normal; cursor: default; border-bottom: 1px solid var(--border); border-radius: 0; padding: 0.5rem 0.45rem; }
+  #tab-moderation ul.picklist li:last-child { border-bottom: none; }
+  #mod-side ul.picklist { max-height: 32vh; }
 
   ul.picklist { list-style: none; padding: 0; margin: 0; max-height: 60vh; overflow-y: auto; }
   ul.picklist li { padding: 0.3rem 0.45rem; border-radius: 5px; cursor: pointer;
@@ -124,6 +131,7 @@
     <button data-tab="acceleration">Acceleration</button>
     <button data-tab="speedhive">Speedhive</button>
     <button data-tab="gglc">GGLC</button>
+    <button data-tab="moderation" class="admin-only">Moderation</button>
   </nav>
   <div style="flex:1"></div>
   <span id="status"></span>
@@ -173,24 +181,6 @@
             <button class="btn" type="button" id="owner-cancel-btn">Cancel</button>
           </div>
         </form>
-      </div>
-      <div class="panel admin-only">
-        <h2>Reports</h2>
-        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Flags sent from the app.</p>
-        <button class="btn" id="reports-load-btn">Load reports</button>
-        <ul id="report-list" class="picklist" style="margin-top:0.5rem"></ul>
-      </div>
-      <div class="panel admin-only">
-        <h2>Banned devices</h2>
-        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Ban a poster from a report. A ban blocks the device from writing and hides everything it posted; lifting it leaves that content hidden.</p>
-        <button class="btn" id="bans-load-btn">Load bans</button>
-        <ul id="ban-list" class="picklist" style="margin-top:0.5rem"></ul>
-      </div>
-      <div class="panel admin-only">
-        <h2>Users</h2>
-        <p class="muted" style="font-size:11px;margin:0 0 0.4rem">Every account, with the phones signed in to it, and every phone that has reached the leaderboard API without signing in, newest activity first. The names are what they posted under; the labels are yours. "Add to board" and "Make owner" act on the course open on the right.</p>
-        <div class="row"><button class="btn" id="users-load-btn">Load users</button><input id="users-filter" type="search" placeholder="Filter" style="flex:1;min-width:0"></div>
-        <ul id="user-list" class="picklist" style="margin-top:0.5rem"></ul>
       </div>
       <div class="panel admin-only">
         <h2>TrackAddict import</h2>
@@ -309,11 +299,47 @@
   </details>
 </section>
 
+<section id="tab-moderation" class="tab admin-only">
+  <div id="mod-layout">
+    <div id="mod-side">
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Reports</h2>
+          <button class="btn" id="reports-load-btn">Refresh</button>
+        </div>
+        <p class="muted" style="font-size:11px;margin:0.4rem 0">Flags sent from the app.</p>
+        <ul id="report-list" class="picklist"></ul>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Banned devices</h2>
+          <button class="btn" id="bans-load-btn">Refresh</button>
+        </div>
+        <p class="muted" style="font-size:11px;margin:0.4rem 0">Ban a poster from a report. A ban blocks the device from writing and hides everything it posted; lifting it leaves that content hidden.</p>
+        <ul id="ban-list" class="picklist"></ul>
+      </div>
+    </div>
+    <div class="panel" id="mod-users">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Users</h2>
+        <button class="btn" id="users-load-btn">Refresh</button>
+      </div>
+      <p class="muted" style="font-size:11px;margin:0.4rem 0">Every account, with the phones signed in to it, and every phone that has reached the leaderboard API without signing in, newest activity first. The names are what they posted under; the labels are yours.</p>
+      <div class="row">
+        <input id="users-filter" type="search" placeholder="Filter" style="flex:1;min-width:0">
+        <label class="muted" style="font-size:12px">"Add to board" and "Make owner" act on
+          <select id="users-board"><option value="">(pick a board)</option></select></label>
+      </div>
+      <ul id="user-list" class="picklist" style="margin-top:0.5rem"></ul>
+    </div>
+  </div>
+</section>
+
 <section id="tab-speedhive" class="tab">
   <div class="panel">
     <div class="row">
       <label class="field">org id <input id="org-input" type="number" value="151294" class="w-md"></label>
-      <button class="btn primary" id="load-btn" style="align-self:end">Load events</button>
+      <button class="btn primary" id="load-btn" style="align-self:end">Reload events</button>
     </div>
   </div>
   <div class="cols">
@@ -327,8 +353,8 @@
 <section id="tab-gglc" class="tab">
   <div class="panel">
     <div class="row">
-      <label class="field">year <input id="gglc-year" type="number" value="2026" class="w-sm"></label>
-      <button class="btn primary" id="gglc-list-btn" style="align-self:end">List events</button>
+      <label class="field">year <input id="gglc-year" type="number" class="w-sm"></label>
+      <button class="btn primary" id="gglc-list-btn" style="align-self:end">Reload events</button>
       <label class="field">date <input id="gglc-date" placeholder="YYYY-MM-DD" class="w-md"></label>
       <button class="btn" id="gglc-load-btn" style="align-self:end">Load event</button>
     </div>
@@ -350,14 +376,16 @@ const setStatus = (msg, isError) => {
   statusEl.classList.toggle("error", !!isError);
 };
 
+function showTab(name) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + name));
+  if (name === "acceleration") loadAcceleration();
+  if (name === "moderation") { loadReports(); loadBans(); loadUsers(); }
+  if (name === "speedhive" && shLoadedOrg !== $("org-input").value) loadShEvents();
+  if (name === "gglc" && gglcLoadedYear !== $("gglc-year").value) loadGglcEvents();
+}
 document.querySelectorAll("nav button").forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    btn.classList.add("active");
-    $("tab-" + btn.dataset.tab).classList.add("active");
-    if (btn.dataset.tab === "acceleration") loadAcceleration();
-  };
+  btn.onclick = () => showTab(btn.dataset.tab);
 });
 
 // The login itself is an HttpOnly cookie the page cannot read; this only
@@ -427,6 +455,7 @@ $("auth-btn").onclick = async () => {
 function renderAuth() {
   $("auth-btn").textContent = adminUser ? `Sign out (${adminUser})` : "Sign in";
   document.body.classList.toggle("admin", !!adminUser);
+  if (!adminUser && $("tab-moderation").classList.contains("active")) showTab("leaderboard");
 }
 renderAuth();
 
@@ -500,6 +529,9 @@ async function loadCourses(selectId) {
   fillList($("course-list"), courses,
     c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}<br><span class="sub">#${c.id}${c.region ? " · " + esc(c.region) : ""} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
+  $("users-board").innerHTML = '<option value="">(pick a board)</option>' +
+    courses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  $("users-board").value = currentCourse?.id ?? "";
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
     if (course) {
@@ -515,6 +547,7 @@ async function loadCourses(selectId) {
 
 function clearCourse() {
   currentCourse = null;
+  $("users-board").value = "";
   cancelRunEdit();
   $("course-form").style.display = "none";
   $("owner-form").style.display = "none";
@@ -528,6 +561,7 @@ function clearCourse() {
 
 async function selectCourse(course) {
   currentCourse = course;
+  $("users-board").value = course.id;
   cancelRunEdit();
   $("lb-course-actions").style.display = "";
   await refreshLeaderboard();
@@ -560,7 +594,7 @@ const personName = p => p.label ?? p.name ?? p.names[0] ?? `(unnamed ${p.kind} #
 function renderMembers(members) {
   const box = $("lb-members");
   const course = currentCourse;
-  box.innerHTML = `<span class="muted">Members: ${members.length ? "" : "(none; add people from the Users panel, or share the join code)"}</span>`;
+  box.innerHTML = `<span class="muted">Members: ${members.length ? "" : "(none; add people from Moderation, or share the join code)"}</span>`;
   for (const m of members) {
     const chip = document.createElement("span");
     chip.className = "badge";
@@ -774,8 +808,8 @@ async function loadReports() {
     const courseId = r.target ? (r.target_type === "course" ? r.target.id : r.target.course_id) : null;
     li.querySelector("[data-act=open]").onclick = e => {
       e.stopPropagation();
-      if (r.target_type === "acceleration") document.querySelector("[data-tab=acceleration]").click();
-      else if (courseId != null) loadCourses(courseId);
+      if (r.target_type === "acceleration") showTab("acceleration");
+      else if (courseId != null) { showTab("leaderboard"); loadCourses(courseId); }
     };
     const reportHide = li.querySelector("[data-act=hide]");
     if (reportHide) {
@@ -873,9 +907,10 @@ function renderUsers() {
     actions.style.marginTop = "0.3rem";
     actions.innerHTML = `<button class="btn" data-act="member">Add to board</button><button class="btn" data-act="owner">Make owner</button><button class="btn${u.banned ? "" : " danger"}" data-act="ban">${u.banned ? "Lift ban" : "Ban"}</button>`;
     const onCourse = action => async () => {
-      if (!currentCourse) { setStatus("open a course first", true); return; }
-      await action(currentCourse);
-      await refreshLeaderboard();
+      const courseId = Number($("users-board").value);
+      if (!courseId) { setStatus("pick a board first", true); return; }
+      await action({ id: courseId });
+      if (currentCourse?.id === courseId) await refreshLeaderboard();
       loadUsers();
     };
     actions.querySelector("[data-act=member]").onclick = onCourse(course =>
@@ -955,11 +990,24 @@ $("ta-parse-btn").onclick = async () => {
 };
 
 // ---------- Speedhive ----------
-$("load-btn").onclick = async () => {
+let shLoadedOrg = null;
+async function loadShEvents() {
+  const org = $("org-input").value;
+  shLoadedOrg = org;
+  $("sh-events").innerHTML = "<li class='muted'>(loading)</li>";
   $("sh-sessions").innerHTML = ""; $("sh-drivers").innerHTML = ""; $("sh-json").textContent = "(click a driver)";
-  const events = await api(`/api/orgs/${$("org-input").value}/events`);
+  let events;
+  try {
+    events = await api(`/api/orgs/${org}/events`);
+  } catch (err) {
+    if (shLoadedOrg === org) { shLoadedOrg = null; $("sh-events").innerHTML = ""; }
+    throw err;
+  }
+  if (shLoadedOrg !== org) return;
   fillList($("sh-events"), events, e => esc(`${e.startDate || e.date || ""} ${e.name || e.id}`), loadSessions);
-};
+}
+$("load-btn").onclick = loadShEvents;
+$("org-input").onchange = loadShEvents;
 
 async function loadSessions(event) {
   $("sh-drivers").innerHTML = ""; $("sh-json").textContent = "(click a driver)";
@@ -1115,11 +1163,25 @@ $("accel-ta-parse-btn").onclick = async () => {
 };
 
 // ---------- GGLC ----------
-$("gglc-list-btn").onclick = async () => {
+$("gglc-year").value = new Date().getFullYear();
+let gglcLoadedYear = null;
+async function loadGglcEvents() {
+  const year = $("gglc-year").value;
+  gglcLoadedYear = year;
+  $("gglc-events").innerHTML = "<li class='muted'>(loading)</li>";
   $("gglc-classes").innerHTML = ""; $("gglc-drivers").innerHTML = ""; $("gglc-json").textContent = "(click a driver)";
-  const events = await api(`/api/gglc/events?year=${$("gglc-year").value}`);
+  let events;
+  try {
+    events = await api(`/api/gglc/events?year=${year}`);
+  } catch (err) {
+    if (gglcLoadedYear === year) { gglcLoadedYear = null; $("gglc-events").innerHTML = ""; }
+    throw err;
+  }
+  if (gglcLoadedYear !== year) return;
   fillList($("gglc-events"), events, e => esc(e.date), e => { $("gglc-date").value = e.date; loadGglcEvent(e.date); });
-};
+}
+$("gglc-list-btn").onclick = loadGglcEvents;
+$("gglc-year").onchange = loadGglcEvents;
 
 $("gglc-load-btn").onclick = () => loadGglcEvent($("gglc-date").value);
 
@@ -1137,7 +1199,9 @@ async function loadGglcEvent(date) {
 
 fetch("/api/admin/session").then(res => res.json()).then(data => { adminUser = data.user; }).catch(() => {}).finally(() => {
   renderAuth();
-  loadCourses();
+  loadCourses().then(courses => {
+    if (courses.length && !currentCourse) $("course-list").children[0].click();
+  });
 });
 </script>
 </body>

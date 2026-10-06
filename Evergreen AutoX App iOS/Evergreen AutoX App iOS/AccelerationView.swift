@@ -5,25 +5,14 @@ struct AccelerationView: View {
     @Environment(AppModel.self) private var model
     @State private var width: CGFloat = 0
     @State private var showForm = false
+    @Environment(\.egLargeText) private var largeText
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 VStack(alignment: .leading, spacing: 12) {
-                    EGBackButton(label: "EVENTS") {
-                        model.goBack()
-                        model.tab = .events
-                    }
-
-                    Text("Acceleration")
-                        .font(.system(size: 19, weight: .heavy))
-
-                    Text("Ranked by 0–60 time")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.egGrayDark)
-
-                    Text("Times are from drag strips and closed courses. Never test on public roads.")
-                        .font(.system(size: 11))
+                    Text("Ranked by 0–60 time. Times are from drag strips and closed courses. Never test on public roads.")
+                        .egFont(11)
                         .foregroundStyle(Color.egGrayDark)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -38,12 +27,12 @@ struct AccelerationView: View {
                 if let entries = model.accelerationEntries {
                     if entries.isEmpty {
                         Text("No times yet.")
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .foregroundStyle(Color.egGray)
                             .padding(24)
                             .frame(maxWidth: .infinity)
                     } else {
-                        let layout = AccelRowLayout(wide: width >= LBRowLayout.wideThreshold)
+                        let layout = AccelRowLayout(wide: width >= LBRowLayout.wideThreshold, largeText: largeText)
                         Section {
                             ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                                 AccelRow(entry: entry, rank: index + 1, layout: layout) {
@@ -59,7 +48,7 @@ struct AccelerationView: View {
                 } else if let error = model.accelerationError {
                     VStack(spacing: 10) {
                         Text(error)
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .foregroundStyle(Color.egGrayDark)
                             .multilineTextAlignment(.center)
                         Button("RETRY") {
@@ -87,6 +76,9 @@ struct AccelerationView: View {
 
 private struct AccelRowLayout {
     let wide: Bool
+    var largeText = false
+
+    var showsHP: Bool { wide || !largeText }
 
     let rank: CGFloat = 30
     let time: CGFloat = 46
@@ -102,19 +94,21 @@ private struct AccelColumnHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            EGColumnLabel(text: "POS").frame(width: layout.rank, alignment: .leading)
-            EGColumnLabel(text: "0–60").frame(width: layout.time, alignment: .trailing)
-            EGColumnLabel(text: "0–30").frame(width: layout.time, alignment: .trailing)
-            EGColumnLabel(text: "HP").frame(width: layout.hp)
+            EGColumnLabel(text: "POS").egWidth(layout.rank, alignment: .leading)
+            EGColumnLabel(text: "0–60").egWidth(layout.time, alignment: .trailing)
+            EGColumnLabel(text: "0–30").egWidth(layout.time, alignment: .trailing)
+            if layout.showsHP {
+                EGColumnLabel(text: "HP").egWidth(layout.hp)
+            }
             EGColumnLabel(text: layout.wide ? "VEHICLE" : "VEHICLE · DRIVER")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if layout.wide {
-                EGColumnLabel(text: "¼ MI").frame(width: layout.strip, alignment: .trailing)
-                EGColumnLabel(text: "¼ MPH").frame(width: layout.strip, alignment: .trailing)
-                EGColumnLabel(text: "⅛ MI").frame(width: layout.strip, alignment: .trailing)
-                EGColumnLabel(text: "⅛ MPH").frame(width: layout.strip, alignment: .trailing)
-                EGColumnLabel(text: "DRIVER").frame(width: layout.driver, alignment: .leading)
-                EGColumnLabel(text: "WEIGHT").frame(width: layout.weight, alignment: .trailing)
+                EGColumnLabel(text: "¼ MI").egWidth(layout.strip, alignment: .trailing)
+                EGColumnLabel(text: "¼ MPH").egWidth(layout.strip, alignment: .trailing)
+                EGColumnLabel(text: "⅛ MI").egWidth(layout.strip, alignment: .trailing)
+                EGColumnLabel(text: "⅛ MPH").egWidth(layout.strip, alignment: .trailing)
+                EGColumnLabel(text: "DRIVER").egWidth(layout.driver, alignment: .leading)
+                EGColumnLabel(text: "WEIGHT").egWidth(layout.weight, alignment: .trailing)
             }
             Color.clear.frame(width: layout.chevron, height: 1)
         }
@@ -148,20 +142,22 @@ private struct AccelRow: View {
         // then offer that to every cell, so the tinted one fills the row.
         HStack(spacing: 8) {
             Text("P\(rank)")
-                .font(.system(size: 14, weight: .heavy))
+                .egFont(14, weight: .heavy)
                 .foregroundStyle(rank <= 3 ? LBEntryRow.podium[rank - 1] : Color.egInk)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(width: layout.rank, alignment: .leading)
+                .egWidth(layout.rank, alignment: .leading)
             Text(AccelFormat.number(entry.zeroTo60))
-                .font(.system(size: 14, weight: .heavy))
+                .egFont(14, weight: .heavy)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .frame(width: layout.time, alignment: .trailing)
+                .egWidth(layout.time, alignment: .trailing)
             stat(entry.zeroTo30, width: layout.time)
-            LBTintCell(text: entry.hp.map(String.init) ?? "—", tint: LBTint.hp(entry.hp))
-                .frame(width: layout.hp)
+            if layout.showsHP {
+                LBTintCell(text: entry.hp.map(String.init) ?? "—", tint: LBTint.hp(entry.hp))
+                    .egWidth(layout.hp)
+            }
             vehicleCell
             if layout.wide {
                 stat(entry.quarterMileSeconds, width: layout.strip)
@@ -169,18 +165,18 @@ private struct AccelRow: View {
                 stat(entry.eighthMileSeconds, width: layout.strip)
                 stat(entry.eighthMileMph, width: layout.strip)
                 Text(entry.driver ?? "—")
-                    .font(.system(size: 12, weight: .heavy))
+                    .egFont(12, weight: .heavy)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .frame(width: layout.driver, alignment: .leading)
+                    .egWidth(layout.driver, alignment: .leading)
                 Text(entry.weightLb.map { "\($0) lb" } ?? "—")
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .monospacedDigit()
                     .foregroundStyle(Color.egGrayDark)
-                    .frame(width: layout.weight, alignment: .trailing)
+                    .egWidth(layout.weight, alignment: .trailing)
             }
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .heavy))
+                .egFont(11, weight: .heavy)
                 .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
                 .frame(width: layout.chevron)
         }
@@ -190,11 +186,11 @@ private struct AccelRow: View {
     private var vehicleCell: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(entry.title)
-                .font(.system(size: 13, weight: .heavy))
+                .egFont(13, weight: .heavy)
                 .lineLimit(2)
             if !layout.wide, let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .egFont(10)
                     .monospacedDigit()
                     .foregroundStyle(Color.egGray)
                     .lineLimit(1)
@@ -215,7 +211,7 @@ private struct AccelRow: View {
 
     private func stat(_ value: Double?, width: CGFloat) -> some View {
         Text(AccelFormat.number(value))
-            .font(.system(size: 12))
+            .egFont(12)
             .monospacedDigit()
             .foregroundStyle(Color.egGrayDark)
             .lineLimit(1)
@@ -245,33 +241,36 @@ struct AccelerationEntryView: View {
         if let entries = model.accelerationEntries,
            let index = entries.firstIndex(where: { $0.id == entryID }) {
             detail(entries[index], rank: index + 1)
+        } else if model.accelerationEntries == nil, model.accelerationError == nil {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            StatusView()
+            Text("This entry is no longer on the board.")
+                .egFont(12)
+                .foregroundStyle(Color.egGrayDark)
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func detail(_ entry: AccelEntry, rank: Int) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
-                HStack {
-                    EGBackButton(label: "ACCELERATION") {
-                        model.screen = .acceleration
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.title)
+                            .egFont(24, weight: .heavy)
+                            .lineLimit(2)
+                        Text("P\(rank) by 0–60 time")
+                            .egFont(12)
+                            .foregroundStyle(Color.egGrayDark)
+                        if let driver = entry.driver {
+                            EGOutlineTag(text: driver.uppercased())
+                                .padding(.top, 4)
+                        }
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     actions(entry)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.title)
-                        .font(.system(size: 24, weight: .heavy))
-                        .lineLimit(2)
-                    Text("P\(rank) by 0–60 time")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.egGrayDark)
-                    if let driver = entry.driver {
-                        EGOutlineTag(text: driver.uppercased())
-                            .padding(.top, 4)
-                    }
                 }
 
                 EGStatsGrid(rows: [
@@ -294,7 +293,7 @@ struct AccelerationEntryView: View {
 
                 if let notes = entry.notes {
                     Text(notes)
-                        .font(.system(size: 12))
+                        .egFont(12)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -304,7 +303,7 @@ struct AccelerationEntryView: View {
 
                 if let notice {
                     Text(notice)
-                        .font(.system(size: 11, weight: .semibold))
+                        .egFont(11, weight: .semibold)
                         .foregroundStyle(Color.egRed)
                 }
                 EGErrorText(text: actionError)
@@ -384,7 +383,7 @@ struct AccelerationEntryView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 14, weight: .heavy))
+                .egFont(14, weight: .heavy)
                 .frame(width: 40, height: 36)
                 .contentShape(Rectangle())
         }
@@ -421,9 +420,9 @@ private struct AccelOtherRuns: View {
     private var columnLabels: some View {
         HStack(spacing: 8) {
             EGColumnLabel(text: "OTHER RUNS").frame(maxWidth: .infinity, alignment: .leading)
-            EGColumnLabel(text: "0–60").frame(width: time, alignment: .trailing)
-            EGColumnLabel(text: "0–30").frame(width: time, alignment: .trailing)
-            EGColumnLabel(text: "¼ MI").frame(width: time, alignment: .trailing)
+            EGColumnLabel(text: "0–60").egWidth(time, alignment: .trailing)
+            EGColumnLabel(text: "0–30").egWidth(time, alignment: .trailing)
+            EGColumnLabel(text: "¼ MI").egWidth(time, alignment: .trailing)
             if deletable {
                 Color.clear.frame(width: trash, height: 1)
             }
@@ -437,14 +436,14 @@ private struct AccelOtherRuns: View {
             ForEach(runs) { run in
                 HStack(spacing: 8) {
                     Text(run.postedOn ?? "—")
-                        .font(.system(size: 12))
+                        .egFont(12)
                         .monospacedDigit()
                         .foregroundStyle(Color.egGrayDark)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(AccelFormat.number(run.zeroTo60))
-                        .font(.system(size: 13, weight: .heavy))
+                        .egFont(13, weight: .heavy)
                         .monospacedDigit()
-                        .frame(width: time, alignment: .trailing)
+                        .egWidth(time, alignment: .trailing)
                     stat(run.zeroTo30)
                     stat(run.quarterMileSeconds)
                     if deletable {
@@ -452,7 +451,7 @@ private struct AccelOtherRuns: View {
                             onDelete(run.id)
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 12, weight: .semibold))
+                                .egFont(12, weight: .semibold)
                                 .frame(width: trash, height: 32)
                                 .contentShape(Rectangle())
                         }
@@ -473,10 +472,10 @@ private struct AccelOtherRuns: View {
 
     private func stat(_ value: Double?) -> some View {
         Text(AccelFormat.number(value))
-            .font(.system(size: 12))
+            .egFont(12)
             .monospacedDigit()
             .foregroundStyle(Color.egGrayDark)
-            .frame(width: time, alignment: .trailing)
+            .egWidth(time, alignment: .trailing)
     }
 }
 
@@ -501,23 +500,27 @@ struct AccelFormView: View {
     var body: some View {
         EGSheetFrame(title: "Post a Time", subtitle: "Acceleration") {
             importBox
-            EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
-            HStack(spacing: 10) {
-                EGFormField(label: "YEAR (OPTIONAL)", placeholder: "2007", text: $year, keyboard: .numberPad)
-                    .frame(width: 110)
-                EGFormField(label: "VEHICLE", placeholder: "BMW Z4M", text: $vehicle)
+            if selectedLap != nil {
+                EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
+                HStack(spacing: 10) {
+                    EGFormField(label: "YEAR (OPTIONAL)", placeholder: "2007", text: $year, keyboard: .numberPad)
+                        .egWidth(110)
+                    EGFormField(label: "VEHICLE", placeholder: "BMW Z4M", text: $vehicle)
+                }
+                HStack(spacing: 10) {
+                    EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
+                    EGFormField(label: "WEIGHT LB (OPTIONAL)", placeholder: "3200", text: $weight, keyboard: .numberPad)
+                }
+                EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, surface, anything worth knowing", text: $notes, capitalization: .sentences)
             }
-            HStack(spacing: 10) {
-                EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
-                EGFormField(label: "WEIGHT LB (OPTIONAL)", placeholder: "3200", text: $weight, keyboard: .numberPad)
-            }
-            EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, surface, anything worth knowing", text: $notes, capitalization: .sentences)
             EGErrorText(text: error)
-            Button("POST TIME") {
-                Task { await save() }
+            if selectedLap != nil {
+                Button("POST TIME") {
+                    Task { await save() }
+                }
+                .buttonStyle(EGButtonStyle(kind: .primary))
+                .disabled(saving)
             }
-            .buttonStyle(EGButtonStyle(kind: .primary))
-            .disabled(saving)
         }
         .onAppear {
             if driver.isEmpty { driver = model.posterName }
@@ -534,10 +537,10 @@ struct AccelFormView: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TRACKADDICT LOG")
-                        .font(.system(size: 11, weight: .heavy))
+                        .egFont(11, weight: .heavy)
                         .kerning(1)
-                    Text(pulls.isEmpty ? "Import the CSV export of a drag run. The times come from the log." : "Tap the run to post.")
-                        .font(.system(size: 10.5))
+                    Text(pulls.isEmpty ? "Step 1: import the CSV export of a drag run. Times are posted from the log, not typed in." : selectedLap == nil ? "Step 2: tap the run to post." : "Fill in the car below, then post.")
+                        .egFont(10.5)
                         .foregroundStyle(Color.egGrayDark)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -582,10 +585,10 @@ struct AccelFormView: View {
         } label: {
             HStack(spacing: 8) {
                 Text("RUN \(pull.lap)")
-                    .font(.system(size: 11, weight: .heavy))
-                    .frame(width: 52, alignment: .leading)
+                    .egFont(11, weight: .heavy)
+                    .egWidth(52, alignment: .leading)
                 Text(summary)
-                    .font(.system(size: 12, weight: selected ? .heavy : .regular))
+                    .egFont(12, weight: selected ? .heavy : .regular)
                     .monospacedDigit()
                     .foregroundStyle(selected ? Color.egRed : Color.egInk)
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -21,8 +21,17 @@ struct LiveView: View {
                 ResultsColumnHeader()
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(model.drivers) { driver in
-                            ResultRowView(driver: driver, onTap: isPickingMe ? { pickMe(driver) } : nil)
+                        if model.liveSortByClass {
+                            ForEach(classGroups, id: \.name) { group in
+                                classHeader(group.name, count: group.drivers.count)
+                                ForEach(group.drivers) { driver in
+                                    ResultRowView(driver: driver, byClass: true, onTap: isPickingMe ? { pickMe(driver) } : nil)
+                                }
+                            }
+                        } else {
+                            ForEach(model.drivers) { driver in
+                                ResultRowView(driver: driver, onTap: isPickingMe ? { pickMe(driver) } : nil)
+                            }
                         }
                     }
                 }
@@ -37,6 +46,33 @@ struct LiveView: View {
         }
     }
 
+    private var classGroups: [(name: String, drivers: [Driver])] {
+        Dictionary(grouping: model.drivers) { $0.carClass ?? "No class" }
+            .map { name, drivers in
+                (name, drivers.sorted { ($0.positionInClass ?? .max, $0.position) < ($1.positionInClass ?? .max, $1.position) })
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func classHeader(_ name: String, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(name.uppercased())
+                .egFont(11, weight: .heavy)
+                .kerning(0.9)
+                .foregroundStyle(Color.egInk)
+            Text(count == 1 ? "1 driver" : "\(count) drivers")
+                .egFont(10)
+                .foregroundStyle(Color.egGray)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Color.egMeBg)
+        .overlay(alignment: .top) {
+            Color.egDivider.frame(height: 1)
+        }
+    }
+
     private func pickMe(_ driver: Driver) {
         model.meNumber = driver.startNumber
         isPickingMe = false
@@ -48,10 +84,10 @@ struct LiveView: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(isPickingMe ? "Tap yourself in the list" : "Which driver is you?")
-                    .font(.system(size: 12.5, weight: .heavy))
+                    .egFont(12.5, weight: .heavy)
                     .foregroundStyle(Color.egInk)
                 Text(isPickingMe ? "Change it later from the ⋯ menu on any driver." : "Get a ME tag and gaps to your friends.")
-                    .font(.system(size: 10.5))
+                    .egFont(10.5)
                     .foregroundStyle(Color.egGrayDark)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,7 +105,7 @@ struct LiveView: View {
                     model.dismissMePrompt()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .heavy))
+                        .egFont(11, weight: .heavy)
                         .foregroundStyle(Color.egGray)
                         .frame(width: 28, height: 32)
                         .contentShape(Rectangle().inset(by: -6))
@@ -93,12 +129,12 @@ struct ResultsColumnHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            EGColumnLabel(text: "POS").frame(width: 34, alignment: .leading)
+            EGColumnLabel(text: "POS").egWidth(34, alignment: .leading)
             if showsNumber {
-                EGColumnLabel(text: "NO.").frame(width: 40, alignment: .leading)
+                EGColumnLabel(text: "NO.").egWidth(40, alignment: .leading)
             }
             EGColumnLabel(text: "DRIVER").frame(maxWidth: .infinity, alignment: .leading)
-            EGColumnLabel(text: "BEST").frame(width: 70, alignment: .trailing)
+            EGColumnLabel(text: "BEST").egWidth(70, alignment: .trailing)
             Color.clear.frame(width: showsPin ? 36 : 12, height: 1)
         }
         .padding(.horizontal, 16)
@@ -109,30 +145,31 @@ struct ResultsColumnHeader: View {
 
 struct StatusView: View {
     @Environment(AppModel.self) private var model
+    var empty = "No results in this session yet."
 
     var body: some View {
         VStack(spacing: 14) {
             if model.isLoading {
                 ProgressView()
                 Text("Loading timing data…")
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
             } else if let error = model.errorMessage {
                 EGTag(text: "OFFLINE", background: .egDarkRed)
                 Text(error)
-                    .font(.system(size: 12))
+                    .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
                     .multilineTextAlignment(.center)
-                Text("Check the server URL in Setup.")
-                    .font(.system(size: 11))
+                Text(model.devMode ? "Check the server URL in Setup." : "Check your connection and try again.")
+                    .egFont(11)
                     .foregroundStyle(Color.egGray)
                 Button("RETRY") {
                     Task { await model.loadEvents() }
                 }
                 .buttonStyle(EGButtonStyle(kind: .primary))
             } else {
-                Text("No results in this session yet.")
-                    .font(.system(size: 12))
+                Text(empty)
+                    .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
             }
         }
@@ -146,6 +183,7 @@ struct ResultRowView: View {
     let driver: Driver
     var showsNumber = true
     var showsPin = true
+    var byClass = false
     var onTap: (() -> Void)?
 
     var body: some View {
@@ -162,45 +200,45 @@ struct ResultRowView: View {
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Text("P\(driver.position)")
-                        .font(.system(size: 14, weight: .heavy))
-                        .frame(width: 34, alignment: .leading)
+                    Text("P\(byClass ? driver.positionInClass ?? driver.position : driver.position)")
+                        .egFont(14, weight: .heavy)
+                        .egWidth(34, alignment: .leading)
                     if showsNumber {
                         Text("#\(driver.startNumber)")
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .monospacedDigit()
                             .foregroundStyle(Color.egGray)
-                            .frame(width: 40, alignment: .leading)
+                            .egWidth(40, alignment: .leading)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
                             Text(model.displayName(driver))
-                                .font(.system(size: 13, weight: .heavy))
+                                .egFont(13, weight: .heavy)
                                 .lineLimit(1)
                             if isMe {
                                 EGTag(text: "ME", background: .egInk, foreground: .egBg, size: 8.5)
                             }
                         }
                         Text(subtitle(nickname: nickname))
-                            .font(.system(size: 10))
+                            .egFont(10)
                             .foregroundStyle(Color.egGray)
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(driver.bestString)
-                            .font(.system(size: 14, weight: .heavy))
+                            .egFont(14, weight: .heavy)
                             .monospacedDigit()
                         Text(driver.runs.count == 1 ? "1 run" : "\(driver.runs.count) runs")
-                            .font(.system(size: 9.5))
+                            .egFont(9.5)
                             .foregroundStyle(Color.egGray)
                     }
-                    .frame(width: 70, alignment: .trailing)
+                    .egWidth(70, alignment: .trailing)
                     if !showsPin {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .heavy))
+                            .egFont(12, weight: .heavy)
                             .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
                             .frame(width: 12)
                     }
@@ -217,7 +255,7 @@ struct ResultRowView: View {
                     model.togglePin(driver.startNumber)
                 } label: {
                     Image(systemName: pinned ? "star.fill" : "star")
-                        .font(.system(size: 18))
+                        .egFont(18)
                         .foregroundStyle(pinned ? Color.egRed : Color.egGray)
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle().inset(by: -8))
@@ -236,7 +274,11 @@ struct ResultRowView: View {
     private func subtitle(nickname: String?) -> String {
         var parts: [String] = []
         if nickname != nil { parts.append(driver.name) }
-        if let carClass = driver.carClass { parts.append(carClass) }
+        if byClass {
+            parts.append("P\(driver.position) overall")
+        } else if let carClass = driver.carClass {
+            parts.append(carClass)
+        }
         return parts.joined(separator: " · ")
     }
 }

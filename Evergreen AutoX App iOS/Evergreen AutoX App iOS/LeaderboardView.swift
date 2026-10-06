@@ -11,6 +11,7 @@ struct LeaderboardView: View {
     @State private var notice: String?
     @State private var actionError: String?
     @State private var width: CGFloat = 0
+    @Environment(\.egLargeText) private var largeText
 
     private enum Sheet: Identifiable {
         case newRun(LBCourse)
@@ -35,28 +36,22 @@ struct LeaderboardView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 VStack(alignment: .leading, spacing: 12) {
-                    EGBackButton(label: "EVENTS") {
-                        model.goBack()
-                        model.tab = .events
+                    if let subtitle {
+                        Text(subtitle)
+                            .egFont(11)
+                            .foregroundStyle(Color.egGrayDark)
                     }
-
-                    Text(course?.name ?? "Leaderboard")
-                        .font(.system(size: 19, weight: .heavy))
-
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.egGrayDark)
 
                     if let description = course?.description {
                         Text(description)
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     if let course, course.unlisted, let code = course.joinCode {
                         HStack(spacing: 8) {
                             Text("Unlisted · join code \(code)")
-                                .font(.system(size: 11, weight: .semibold))
+                                .egFont(11, weight: .semibold)
                                 .monospacedDigit()
                                 .foregroundStyle(Color.egGrayDark)
                             Button(copiedCode ? "COPIED" : "COPY") {
@@ -77,7 +72,7 @@ struct LeaderboardView: View {
 
                     if let notice {
                         Text(notice)
-                            .font(.system(size: 11, weight: .semibold))
+                            .egFont(11, weight: .semibold)
                             .foregroundStyle(Color.egRed)
                     }
                     EGErrorText(text: actionError)
@@ -89,7 +84,7 @@ struct LeaderboardView: View {
                     if let error = model.leaderboardError {
                         VStack(spacing: 10) {
                             Text(error)
-                                .font(.system(size: 12))
+                                .egFont(12)
                                 .foregroundStyle(Color.egGrayDark)
                                 .multilineTextAlignment(.center)
                             Button("RETRY") {
@@ -106,14 +101,15 @@ struct LeaderboardView: View {
                     }
                 } else if entries.isEmpty {
                     Text("No times yet. Be the first to post one.")
-                        .font(.system(size: 12))
+                        .egFont(12)
                         .foregroundStyle(Color.egGray)
                         .padding(24)
                         .frame(maxWidth: .infinity)
                 } else {
                     let layout = LBRowLayout(
                         wide: width >= LBRowLayout.wideThreshold,
-                        showsRaw: entries.contains { $0.best.legacy }
+                        showsRaw: entries.contains { $0.best.legacy },
+                        largeText: largeText
                     )
                     Section {
                         ForEach(entries) { entry in
@@ -227,7 +223,7 @@ struct LeaderboardView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .heavy))
+                    .egFont(14, weight: .heavy)
                     .frame(width: 40, height: 36)
                     .contentShape(Rectangle())
             }
@@ -243,20 +239,16 @@ struct LeaderboardView: View {
         }
     }
 
-    private var subtitle: String {
+    // The name and creator are in the screen's header.
+    private var subtitle: String? {
         var parts: [String] = []
         if let distance = course?.distanceMiles {
             parts.append(String(format: "%.2f mile course", distance))
         }
-        if let creator = course?.createdBy {
-            parts.append("Created by \(creator)")
-        } else {
-            parts.append("Community leaderboard")
-        }
         if course?.legacyDistanceMiles != nil {
             parts.append("legacy runs scaled to the current course length")
         }
-        return parts.joined(separator: " · ")
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 
@@ -270,12 +262,17 @@ struct LeaderboardDriverView: View {
     @State private var pendingBlock: LBRun?
     @State private var notice: String?
     @State private var actionError: String?
+    @Environment(\.egLargeText) private var largeText
 
     var body: some View {
         if let entry = model.leaderboardEntry(at: position) {
             detail(entry)
         } else {
-            StatusView()
+            Text("This driver is no longer on the leaderboard.")
+                .egFont(12)
+                .foregroundStyle(Color.egGrayDark)
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -291,17 +288,13 @@ struct LeaderboardDriverView: View {
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
-                EGBackButton(label: "LEADERBOARD") {
-                    model.screen = .leaderboard(courseID)
-                }
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text(driver.name)
-                        .font(.system(size: 24, weight: .heavy))
+                        .egFont(24, weight: .heavy)
                         .lineLimit(2)
                     if let course {
                         Text(course.name)
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .foregroundStyle(Color.egGrayDark)
                     }
                     VStack(alignment: .leading, spacing: 4) {
@@ -327,7 +320,7 @@ struct LeaderboardDriverView: View {
 
                 if let notice {
                     Text(notice)
-                        .font(.system(size: 11, weight: .semibold))
+                        .egFont(11, weight: .semibold)
                         .foregroundStyle(Color.egRed)
                 }
                 EGErrorText(text: actionError)
@@ -364,7 +357,7 @@ struct LeaderboardDriverView: View {
                 )
 
                 if !otherCars.isEmpty {
-                    let layout = LBRowLayout(wide: false, showsRaw: false)
+                    let layout = LBRowLayout(wide: false, showsRaw: false, largeText: largeText)
                     VStack(alignment: .leading, spacing: 0) {
                         EGColumnLabel(text: "OTHER CARS")
                             .padding(.horizontal, 16)
@@ -494,6 +487,9 @@ struct LBRowLayout {
 
     let wide: Bool
     let showsRaw: Bool
+    var largeText = false
+
+    var showsHP: Bool { wide || !largeText }
 
     let rank: CGFloat = 30
     let time: CGFloat = 70
@@ -510,22 +506,24 @@ struct LBColumnHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            EGColumnLabel(text: "POS").frame(width: layout.rank, alignment: .leading)
+            EGColumnLabel(text: "POS").egWidth(layout.rank, alignment: .leading)
             EGColumnLabel(text: layout.wide && layout.showsRaw ? "ADJ. TIME" : "TIME")
-                .frame(width: layout.time, alignment: .trailing)
+                .egWidth(layout.time, alignment: .trailing)
             if layout.wide, layout.showsRaw {
-                EGColumnLabel(text: "RAW TIME").frame(width: layout.time, alignment: .trailing)
+                EGColumnLabel(text: "RAW TIME").egWidth(layout.time, alignment: .trailing)
             }
-            EGColumnLabel(text: "HP").frame(width: layout.hp)
+            if layout.showsHP {
+                EGColumnLabel(text: "HP").egWidth(layout.hp)
+            }
             EGColumnLabel(text: layout.wide ? "VEHICLE" : "VEHICLE · DRIVER")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if layout.wide {
-                EGColumnLabel(text: "AVG").frame(width: layout.speed, alignment: .trailing)
-                EGColumnLabel(text: "TOP").frame(width: layout.speed, alignment: .trailing)
-                EGColumnLabel(text: "DRIVER").frame(width: layout.driver, alignment: .leading)
-                EGColumnLabel(text: "DATE").frame(width: layout.date, alignment: .trailing)
+                EGColumnLabel(text: "AVG").egWidth(layout.speed, alignment: .trailing)
+                EGColumnLabel(text: "TOP").egWidth(layout.speed, alignment: .trailing)
+                EGColumnLabel(text: "DRIVER").egWidth(layout.driver, alignment: .leading)
+                EGColumnLabel(text: "DATE").egWidth(layout.date, alignment: .trailing)
             }
-            EGColumnLabel(text: "COND").frame(width: layout.conditions)
+            EGColumnLabel(text: "COND").egWidth(layout.conditions)
             Color.clear.frame(width: layout.chevron, height: 1)
         }
         .padding(.horizontal, 16)
@@ -560,40 +558,42 @@ struct LBEntryRow: View {
             // then offer that to every cell, so the tinted ones fill the row.
             HStack(spacing: 8) {
                 Text("P\(entry.id)")
-                    .font(.system(size: 14, weight: .heavy))
+                    .egFont(14, weight: .heavy)
                     .foregroundStyle(entry.id <= 3 ? Self.podium[entry.id - 1] : Color.egInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .frame(width: layout.rank, alignment: .leading)
+                    .egWidth(layout.rank, alignment: .leading)
                 timeCell
                 if layout.wide, layout.showsRaw {
                     LBTintCell(
                         text: best.legacy ? best.time : "—",
                         tint: best.legacy ? .lightGreen : nil
                     )
-                    .frame(width: layout.time)
+                    .egWidth(layout.time)
                 }
-                LBTintCell(text: best.hp.map(String.init) ?? "—", tint: LBTint.hp(best.hp))
-                    .frame(width: layout.hp)
+                if layout.showsHP {
+                    LBTintCell(text: best.hp.map(String.init) ?? "—", tint: LBTint.hp(best.hp))
+                        .egWidth(layout.hp)
+                }
                 vehicleCell
                 if layout.wide {
                     speedCell(best.avgSpeedMph)
                     speedCell(best.topSpeedMph)
                     Text(best.driver)
-                        .font(.system(size: 12, weight: .heavy))
+                        .egFont(12, weight: .heavy)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                        .frame(width: layout.driver, alignment: .leading)
+                        .egWidth(layout.driver, alignment: .leading)
                     Text(shortDate ?? "—")
-                        .font(.system(size: 12))
+                        .egFont(12)
                         .monospacedDigit()
                         .foregroundStyle(Color.egGrayDark)
-                        .frame(width: layout.date, alignment: .trailing)
+                        .egWidth(layout.date, alignment: .trailing)
                 }
                 LBTintCell(text: best.conditions ?? "—", tint: LBTint.conditions(best.conditions))
-                    .frame(width: layout.conditions)
+                    .egWidth(layout.conditions)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .heavy))
+                    .egFont(11, weight: .heavy)
                     .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
                     .frame(width: layout.chevron)
             }
@@ -611,13 +611,13 @@ struct LBEntryRow: View {
     private var timeCell: some View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(best.adjustedTime)
-                .font(.system(size: 14, weight: .heavy))
+                .egFont(14, weight: .heavy)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             if best.legacy, !layout.wide {
                 Text(best.time)
-                    .font(.system(size: 10, weight: .semibold))
+                    .egFont(10, weight: .semibold)
                     .monospacedDigit()
                     .foregroundStyle(LBTint.ink)
                     .padding(.horizontal, 4)
@@ -625,17 +625,17 @@ struct LBEntryRow: View {
                     .background(LBTint.lightGreen.color)
             }
         }
-        .frame(width: layout.time, alignment: .trailing)
+        .egWidth(layout.time, alignment: .trailing)
     }
 
     private var vehicleCell: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(best.vehicle ?? best.driver)
-                .font(.system(size: 13, weight: .heavy))
+                .egFont(13, weight: .heavy)
                 .lineLimit(2)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .egFont(10)
                     .foregroundStyle(Color.egGray)
                     .lineLimit(1)
             }
@@ -646,10 +646,10 @@ struct LBEntryRow: View {
 
     private func speedCell(_ mph: Double?) -> some View {
         Text(mph.map { String(format: "%.1f", $0) } ?? "—")
-            .font(.system(size: 12))
+            .egFont(12)
             .monospacedDigit()
             .foregroundStyle(Color.egGrayDark)
-            .frame(width: layout.speed, alignment: .trailing)
+            .egWidth(layout.speed, alignment: .trailing)
     }
 
     private var subtitle: String? {
@@ -675,7 +675,7 @@ struct LBTintCell: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: tint == nil ? .regular : .heavy))
+            .egFont(12, weight: tint == nil ? .regular : .heavy)
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.6)

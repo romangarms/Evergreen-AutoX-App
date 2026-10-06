@@ -12,7 +12,7 @@ struct EGFormField: View {
         VStack(alignment: .leading, spacing: 4) {
             EGColumnLabel(text: label)
             TextField(placeholder, text: $text)
-                .font(.system(size: 13))
+                .egFont(13)
                 .keyboardType(keyboard)
                 .textInputAutocapitalization(capitalization)
                 .autocorrectionDisabled()
@@ -36,10 +36,10 @@ struct EGSheetFrame<Content: View>: View {
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
-                            .font(.system(size: 19, weight: .heavy))
+                            .egFont(19, weight: .heavy)
                         if let subtitle {
                             Text(subtitle)
-                                .font(.system(size: 11))
+                                .egFont(11)
                                 .foregroundStyle(Color.egGrayDark)
                         }
                     }
@@ -48,7 +48,7 @@ struct EGSheetFrame<Content: View>: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .heavy))
+                            .egFont(12, weight: .heavy)
                             .frame(width: 32, height: 32)
                     }
                     .buttonStyle(EGChipButtonStyle())
@@ -72,7 +72,7 @@ struct EGErrorText: View {
     var body: some View {
         if let text {
             Text(text)
-                .font(.system(size: 11.5, weight: .semibold))
+                .egFont(11.5, weight: .semibold)
                 .foregroundStyle(Color.egDarkRed)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -112,17 +112,17 @@ struct GuidelinesView: View {
     var body: some View {
         EGSheetFrame(title: "Community Leaderboards", subtitle: "Read this once before you post.") {
             Text("Leaderboards and times are posted by people using this app, not by event organizers.")
-                .font(.system(size: 13))
+                .egFont(13)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Self.rules, id: \.self) { rule in
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .black))
+                            .egFont(11, weight: .black)
                             .foregroundStyle(Color.egRed)
                             .padding(.top, 3)
                         Text(rule)
-                            .font(.system(size: 12.5))
+                            .egFont(12.5)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -182,7 +182,7 @@ struct CourseFormView: View {
                 }
                 .buttonStyle(EGChipButtonStyle())
                 Text("An unlisted leaderboard stays out of the list in the app. People add it with a join code you share with them.")
-                    .font(.system(size: 10.5))
+                    .egFont(10.5)
                     .foregroundStyle(Color.egGrayDark)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -264,31 +264,35 @@ struct RunFormView: View {
     var body: some View {
         EGSheetFrame(title: "Post a Time", subtitle: course.name) {
             importBox
-            EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
-            HStack(spacing: 10) {
-                EGFormField(label: "VEHICLE (OPTIONAL)", placeholder: "2007 BMW Z4M", text: $vehicle)
-                EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
-                    .frame(width: 96)
-            }
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    EGColumnLabel(text: "DATE")
-                    DatePicker("", selection: $date, in: ...Date.now, displayedComponents: .date)
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            if selectedLap != nil {
+                EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
+                HStack(spacing: 10) {
+                    EGFormField(label: "VEHICLE (OPTIONAL)", placeholder: "2007 BMW Z4M", text: $vehicle)
+                    EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
+                        .egWidth(96)
                 }
-                EGFormField(label: "CONDITIONS", placeholder: "Dry", text: $conditions)
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        EGColumnLabel(text: "DATE")
+                        DatePicker("", selection: $date, in: ...Date.now, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    EGFormField(label: "CONDITIONS", placeholder: "Dry", text: $conditions)
+                }
+                if let legacyDistance = course.legacyDistanceMiles, let distance = course.distanceMiles {
+                    legacyToggle(legacyDistance: legacyDistance, distance: distance)
+                }
+                EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, traffic, anything worth knowing", text: $notes, capitalization: .sentences)
             }
-            if let legacyDistance = course.legacyDistanceMiles, let distance = course.distanceMiles {
-                legacyToggle(legacyDistance: legacyDistance, distance: distance)
-            }
-            EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, traffic, anything worth knowing", text: $notes, capitalization: .sentences)
             EGErrorText(text: error)
-            Button("POST TIME") {
-                Task { await save() }
+            if selectedLap != nil {
+                Button("POST TIME") {
+                    Task { await save() }
+                }
+                .buttonStyle(EGButtonStyle(kind: .primary))
+                .disabled(saving)
             }
-            .buttonStyle(EGButtonStyle(kind: .primary))
-            .disabled(saving)
         }
         .onAppear {
             if driver.isEmpty { driver = model.posterName }
@@ -305,11 +309,12 @@ struct RunFormView: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TRACKADDICT LOG")
-                        .font(.system(size: 11, weight: .heavy))
+                        .egFont(11, weight: .heavy)
                         .kerning(1)
-                    Text(laps.isEmpty ? "Import a CSV export. The time and top speed come from the lap you pick." : "Tap the lap to post.")
-                        .font(.system(size: 10.5))
+                    Text(laps.isEmpty ? "Step 1: import a CSV export. Times are posted from the log, not typed in." : selectedLap == nil ? "Step 2: tap the lap to post." : "Fill in the details below, then post.")
+                        .egFont(10.5)
                         .foregroundStyle(Color.egGrayDark)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
@@ -350,7 +355,7 @@ struct RunFormView: View {
             }
             .buttonStyle(EGChipButtonStyle())
             Text(String(format: "Check this if the run used the old %.2f mi route. Its time is scaled to the current %.2f mi so it ranks fairly.", legacyDistance, distance))
-                .font(.system(size: 10.5))
+                .egFont(10.5)
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -363,20 +368,20 @@ struct RunFormView: View {
         } label: {
             HStack(spacing: 8) {
                 Text(lap.lap == 0 ? "PRE-START" : "LAP \(lap.lap)")
-                    .font(.system(size: 11, weight: .heavy))
-                    .frame(width: 76, alignment: .leading)
+                    .egFont(11, weight: .heavy)
+                    .egWidth(76, alignment: .leading)
                 Text(lap.time ?? "—")
-                    .font(.system(size: 13, weight: selected ? .heavy : .regular))
+                    .egFont(13, weight: selected ? .heavy : .regular)
                     .monospacedDigit()
                     .foregroundStyle(selected ? Color.egRed : Color.egInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(lap.distanceMiles.map { String(format: "%.2f mi", $0) } ?? "")
-                    .font(.system(size: 10.5))
+                    .egFont(10.5)
                     .foregroundStyle(Color.egGray)
                 Text(lap.topSpeedMph.map { String(format: "%.0f mph", $0) } ?? "")
-                    .font(.system(size: 10.5))
+                    .egFont(10.5)
                     .foregroundStyle(Color.egGray)
-                    .frame(width: 58, alignment: .trailing)
+                    .egWidth(58, alignment: .trailing)
             }
             .foregroundStyle(Color.egInk)
             .padding(.horizontal, 10)
@@ -471,7 +476,7 @@ struct JoinCourseSheet: View {
     var body: some View {
         EGSheetFrame(title: "Join a Leaderboard", subtitle: "Unlisted leaderboards are added with a join code.") {
             Text("Ask whoever runs the leaderboard for its code. They can find it at the top of the leaderboard.")
-                .font(.system(size: 12.5))
+                .egFont(12.5)
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
             EGFormField(label: "JOIN CODE", placeholder: "ABCD2345", text: $code, capitalization: .characters)
@@ -516,7 +521,7 @@ struct ReportSheet: View {
     var body: some View {
         EGSheetFrame(title: "Report", subtitle: subject) {
             Text("Tell us what's wrong. Reports go to the app's maintainer, who can remove anything that breaks the guidelines.")
-                .font(.system(size: 12.5))
+                .egFont(12.5)
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
             EGFormField(label: "REASON", placeholder: "Public road, fake time, offensive name…", text: $reason, capitalization: .sentences)

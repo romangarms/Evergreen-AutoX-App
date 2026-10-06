@@ -2,12 +2,9 @@ import SwiftUI
 
 struct EventsView: View {
     @Environment(AppModel.self) private var model
-    @State private var showNewCourse = false
-    @State private var showJoinCourse = false
-
-    // Three sections must fit on one screen with the search field, so
+    // Both sections must fit on one screen with the search field, so
     // each shows only its newest few until expanded.
-    private static let collapsedCount = 3
+    private static let collapsedCount = 5
 
     private struct SourceSection: Identifiable {
         let source: EventSource
@@ -33,10 +30,10 @@ struct EventsView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if model.events.isEmpty {
-                        StatusView()
+                        StatusView(empty: "No events found.")
                     } else if visibleSections.isEmpty {
                         Text("No events match \"\(query)\".")
-                            .font(.system(size: 12))
+                            .egFont(12)
                             .foregroundStyle(Color.egGrayDark)
                             .padding(24)
                     }
@@ -54,12 +51,6 @@ struct EventsView: View {
             }
             .refreshable { await model.loadEvents() }
         }
-        .sheet(isPresented: $showNewCourse) {
-            GuidelinesGate { CourseFormView() }
-        }
-        .sheet(isPresented: $showJoinCourse) {
-            JoinCourseSheet()
-        }
     }
 
     private var query: String {
@@ -69,15 +60,13 @@ struct EventsView: View {
     private var isSearching: Bool { !query.isEmpty }
 
     private var sections: [SourceSection] {
-        EventSource.allCases.map { source in
+        [EventSource.gglc, .speedhive].map { source in
             SourceSection(source: source, events: model.events.filter { $0.source == source && matches($0) })
         }
     }
 
-    // The leaderboards section stays visible when empty so the button to
-    // create one is always reachable.
     private var visibleSections: [SourceSection] {
-        sections.filter { !$0.events.isEmpty || ($0.source == .leaderboard && showsAcceleration) }
+        sections.filter { !$0.events.isEmpty }
     }
 
     // Searching looks through everything; the toggle only shapes browsing.
@@ -95,7 +84,7 @@ struct EventsView: View {
     private func rows(_ section: SourceSection) -> [Row] {
         let expanded = isSearching || model.expandedEventSources.contains(section.source)
         let events = expanded ? section.events : Array(section.events.prefix(Self.collapsedCount))
-        guard expanded, !isSearching, section.source != .leaderboard else {
+        guard expanded, !isSearching else {
             return events.map(Row.event)
         }
         var rows: [Row] = []
@@ -110,48 +99,25 @@ struct EventsView: View {
         return rows
     }
 
-    private func expandLabel(expanded: Bool, count: Int, short: Bool) -> String {
-        if expanded { return short ? "LESS" : "SHOW LESS" }
-        return short ? "ALL \(count)" : "SHOW ALL \(count)"
-    }
-
     private func sectionView(_ section: SourceSection) -> some View {
         let expanded = model.expandedEventSources.contains(section.source)
         let expandable = !isSearching && section.events.count > Self.collapsedCount
         return VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 8) {
                 Text(section.source.label.uppercased())
-                    .font(.system(size: 12, weight: .heavy))
+                    .egFont(12, weight: .heavy)
                     .kerning(1.1)
                     .foregroundStyle(Color.egInk)
                     .fixedSize()
                 if section.source == .speedhive, !isSearching, model.hasSpeedhiveAutoXEvents {
                     autoXToggle
-                } else if let detail = sectionDetail(section.source), !(section.source == .leaderboard && expandable) {
+                } else if let detail = sectionDetail(section.source) {
                     Text(detail)
-                        .font(.system(size: 10.5))
+                        .egFont(10.5)
                         .foregroundStyle(Color.egGray)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                if section.source == .leaderboard, !isSearching {
-                    Button("JOIN") {
-                        showJoinCourse = true
-                    }
-                    .buttonStyle(EGChipButtonStyle())
-                    .fixedSize()
-                    Button {
-                        showNewCourse = true
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .black))
-                            Text("NEW")
-                        }
-                    }
-                    .buttonStyle(EGChipButtonStyle(tint: .egRed))
-                    .fixedSize()
-                }
                 if expandable {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -163,12 +129,10 @@ struct EventsView: View {
                         }
                     } label: {
                         HStack(spacing: 5) {
-                            // The leaderboard header also holds JOIN and NEW, which leaves
-                            // no room for the longer label on a 390pt-wide phone.
-                            Text(expandLabel(expanded: expanded, count: section.events.count, short: section.source == .leaderboard))
+                            Text(expanded ? "SHOW LESS" : "SHOW ALL \(section.events.count)")
                                 .fixedSize()
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 9, weight: .heavy))
+                                .egFont(9, weight: .heavy)
                         }
                     }
                     .buttonStyle(EGChipButtonStyle(tint: .egRed))
@@ -178,24 +142,11 @@ struct EventsView: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
 
-            if section.source == .leaderboard, section.events.isEmpty, !isSearching {
-                Text("No leaderboards yet. Tap NEW to start one for your course.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.egGrayDark)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-            }
-
-            if section.source == .leaderboard, showsAcceleration {
-                accelerationRow
-            }
-
             ForEach(rows(section)) { row in
                 switch row {
                 case .month(let month):
                     Text(AppModel.monthLabel(month).uppercased())
-                        .font(.system(size: 9.5, weight: .heavy))
+                        .egFont(9.5, weight: .heavy)
                         .kerning(0.9)
                         .foregroundStyle(Color.egGray)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -209,42 +160,11 @@ struct EventsView: View {
         }
     }
 
-    private var showsAcceleration: Bool {
-        !isSearching || "Acceleration".localizedCaseInsensitiveContains(query)
-    }
-
-    private var accelerationRow: some View {
-        Button {
-            model.open(screen: .acceleration)
-        } label: {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Acceleration")
-                        .font(.system(size: 13.5, weight: .heavy))
-                    Text("0–60, 0–30 and drag strip times")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Color.egGray)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
-            }
-            .foregroundStyle(Color.egInk)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .overlay(alignment: .top) {
-                Color.egHairline.frame(height: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
     private func sectionDetail(_ source: EventSource) -> String? {
         switch source {
         case .speedhive: model.orgName
         case .gglc: "Golden Gate Lotus Club"
-        case .leaderboard: "Community"
+        case .leaderboard: nil
         }
     }
 
@@ -265,17 +185,17 @@ struct EventsView: View {
         @Bindable var model = model
         return HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .egFont(12, weight: .semibold)
                 .foregroundStyle(Color.egGray)
-            TextField("Search all events", text: $model.eventSearch)
-                .font(.system(size: 12.5))
+            TextField("Search events", text: $model.eventSearch)
+                .egFont(12.5)
                 .autocorrectionDisabled()
             if !model.eventSearch.isEmpty {
                 Button {
                     model.eventSearch = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 17))
+                        .egFont(17)
                         .foregroundStyle(Color.egGray)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle().inset(by: -8))
@@ -300,10 +220,10 @@ struct EventsView: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title(event))
-                        .font(.system(size: 13.5, weight: .heavy))
+                        .egFont(13.5, weight: .heavy)
                         .multilineTextAlignment(.leading)
                     Text(subtitle(event))
-                        .font(.system(size: 10.5))
+                        .egFont(10.5)
                         .foregroundStyle(Color.egGray)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -315,7 +235,7 @@ struct EventsView: View {
                         .padding(.trailing, 8)
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .heavy))
+                    .egFont(12, weight: .heavy)
                     .foregroundStyle(Color(light: 0x9B9797, dark: 0x757070))
             }
             .foregroundStyle(Color.egInk)
@@ -331,15 +251,13 @@ struct EventsView: View {
 
     // Most events share a name, so the date is what tells rows apart.
     private func title(_ event: SHEvent) -> String {
-        guard event.source != .leaderboard else { return event.name }
-        return AppModel.eventDate(event.startDate) ?? event.name
+        AppModel.eventDate(event.startDate) ?? event.name
     }
 
     private func subtitle(_ event: SHEvent) -> String {
         switch event.source {
         case .leaderboard:
-            let parts = [event.location?.lengthLabel.map { "\($0) course" }, event.location?.name].compactMap(\.self)
-            return parts.isEmpty ? "Community leaderboard" : parts.joined(separator: " · ")
+            return ""
         case .gglc:
             return AppModel.eventDate(event.startDate) == nil ? "" : event.name
         case .speedhive:
