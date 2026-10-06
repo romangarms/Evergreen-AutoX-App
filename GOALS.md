@@ -6,7 +6,7 @@ were not on the original wishlist and are up for debate.
 
 ## Where things stand (Sept 2026)
 
-- **App** (iOS 26, TestFlight 1.2): Live / Friends / Events / Setup tabs. Pins, nicknames, and the ME car
+- **App** (iOS 26, TestFlight 1.3): Live / Friends / Events / Setup tabs. Pins, nicknames, and the ME car
   are stored per event in `UserDefaults` on the device only. Data refreshes on pull-to-refresh; there is
   no background polling. Community leaderboards can be created, posted to (from a TrackAddict CSV
   only, so times come from a log), reported, and hidden from the app; creators edit/delete their own boards.

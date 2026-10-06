@@ -38,7 +38,8 @@ def device():
             conn.execute("INSERT OR IGNORE INTO devices (token) VALUES (?)", (token,))
             if signed_in:
                 conn.execute(
-                    "INSERT OR IGNORE INTO users (apple_sub) VALUES (?)", (name,)
+                    "INSERT OR IGNORE INTO users (apple_sub, name) VALUES (?, ?)",
+                    (name, name),
                 )
                 conn.execute(
                     """UPDATE devices SET user_id =

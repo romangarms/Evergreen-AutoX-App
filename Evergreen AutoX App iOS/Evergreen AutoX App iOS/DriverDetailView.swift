@@ -18,7 +18,7 @@ struct DriverDetailView: View {
         let isMe = driver.startNumber == model.meNumber
 
         return ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
                 EGBackButton(label: model.tab == .friends ? "FRIENDS" : "RESULTS") {
                     model.goBack()
                 }
@@ -163,18 +163,29 @@ struct DriverRunsTable: View {
     private var hasMenu: Bool { onReport != nil || onDelete != nil }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                EGColumnLabel(text: "RUN").frame(width: 44, alignment: .leading)
-                EGColumnLabel(text: "TIME").frame(maxWidth: .infinity, alignment: .leading)
-                EGColumnLabel(text: "MPH").frame(width: 52, alignment: .trailing)
-                EGColumnLabel(text: "Δ BEST").frame(width: 66, alignment: .trailing)
-                if hasMenu {
-                    Color.clear.frame(width: 30, height: 1)
-                }
-            }
-            .padding(.bottom, 6)
+        Section {
+            rows
+        } header: {
+            columnLabels
+        }
+    }
 
+    private var columnLabels: some View {
+        HStack(spacing: 0) {
+            EGColumnLabel(text: "RUN").frame(width: 44, alignment: .leading)
+            EGColumnLabel(text: "TIME").frame(maxWidth: .infinity, alignment: .leading)
+            EGColumnLabel(text: "MPH").frame(width: 52, alignment: .trailing)
+            EGColumnLabel(text: "Δ BEST").frame(width: 66, alignment: .trailing)
+            if hasMenu {
+                Color.clear.frame(width: 30, height: 1)
+            }
+        }
+        .padding(.vertical, 6)
+        .background(Color.egBg.padding(.horizontal, -16))
+    }
+
+    private var rows: some View {
+        VStack(spacing: 0) {
             if driver.runs.isEmpty {
                 Text("No runs recorded yet.")
                     .font(.system(size: 12))

@@ -370,11 +370,17 @@ struct AccelEntry: Decodable, Identifiable {
     let notes: String?
     let isOwner: Bool?
     let hasOwner: Bool?
+    let createdAt: String?
+    let otherRuns: [AccelEntry]?
 
     var canBlockPoster: Bool { hasOwner == true && isOwner != true }
 
+    var postedOn: String? { createdAt.map { String($0.prefix(10)) } }
+
     enum CodingKeys: String, CodingKey {
         case id, year, vehicle, driver, hp, notes
+        case createdAt = "created_at"
+        case otherRuns = "other_runs"
         case isOwner = "is_owner"
         case hasOwner = "has_owner"
         case weightLb = "weight_lb"

@@ -149,6 +149,10 @@ def test_board_shows_a_posters_best_run_per_vehicle(client, device):
     board += [entry["id"] for entry in unowned]
     for viewer in (None, owner, other):
         assert _listed_ids(client, viewer) == board
+    top, *rest = client.get("/api/acceleration", headers=other).json()
+    assert [run["id"] for run in top["other_runs"]] == [slow["id"]]
+    assert "owner_id" not in top["other_runs"][0]
+    assert all(entry["other_runs"] == [] for entry in rest)
     assert slow["id"] in _listed_ids(client, auth=ADMIN)
 
     url = f"/api/acceleration/{slow['id']}"

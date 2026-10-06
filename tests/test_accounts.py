@@ -52,7 +52,7 @@ def local_apple_key(monkeypatch):
 
 @pytest.fixture
 def sign_in(client):
-    def _sign_in(device: str, sub: str, name: str | None = None) -> dict:
+    def _sign_in(device: str, sub: str, name: str | None = "Test User") -> dict:
         headers = bearer(device_token(device))
         response = client.post(
             "/api/account/apple",
@@ -138,7 +138,7 @@ def test_account_follows_the_person_across_devices(client, sign_in):
     board = make_board(client, first)
     run = post_run(client, first, board["id"]).json()
 
-    second = sign_in("second", "sub-1")
+    second = sign_in("second", "sub-1", "Name From Apple")
     assert client.get("/api/account", headers=second).json() == {
         "signed_in": True,
         "name": "Sam Driver",
@@ -452,3 +452,40 @@ def test_idle_devices_are_pruned(client, sign_in, monkeypatch):
     with server.db.session() as conn:
         left = conn.execute("SELECT label, user_id FROM devices").fetchall()
     assert [row["label"] for row in left] == ["keep"]
+
+
+def test_sign_in_needs_a_username_once(client, sign_in):
+    headers = bearer(device_token("phone"))
+
+    def attempt(name):
+        return client.post(
+            "/api/account/apple",
+            json={
+                "identity_token": identity_token("sub-1"),
+                "nonce": NONCE,
+                "name": name,
+            },
+            headers=headers,
+        )
+
+    for missing in (None, "   ", "shit"):
+        assert attempt(missing).status_code == 428
+        assert client.get("/api/account", headers=headers).json()["signed_in"] is False
+    assert admin_people(client)[0]["kind"] == "device"
+
+    assert attempt("sam").json() == {"signed_in": True, "name": "sam"}
+    client.delete("/api/account/session", headers=headers)
+    assert attempt(None).json() == {"signed_in": True, "name": "sam"}
+
+
+def test_account_without_a_username_cannot_post(client, sign_in):
+    headers = sign_in("phone", "sub-1")
+    with server.db.session() as conn:
+        conn.execute("UPDATE users SET name = NULL")
+    refused = client.post(
+        "/api/leaderboard/courses", json={"name": "Lot A"}, headers=headers
+    )
+    assert refused.status_code == 403
+    assert "username" in refused.json()["detail"]
+    client.patch("/api/account", json={"name": "sam"}, headers=headers)
+    assert make_board(client, headers)["name"] == "Lot A"

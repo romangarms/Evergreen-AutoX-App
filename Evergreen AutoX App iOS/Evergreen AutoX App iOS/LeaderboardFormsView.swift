@@ -91,6 +91,8 @@ struct GuidelinesGate<Content: View>: View {
             GuidelinesView()
         } else if !model.signedIn {
             SignInView()
+        } else if model.needsUsername {
+            UsernameView()
         } else {
             content
         }

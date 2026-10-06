@@ -8,7 +8,7 @@ struct AccelerationView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 VStack(alignment: .leading, spacing: 12) {
                     EGBackButton(label: "EVENTS") {
                         model.goBack()
@@ -44,12 +44,16 @@ struct AccelerationView: View {
                             .frame(maxWidth: .infinity)
                     } else {
                         let layout = AccelRowLayout(wide: width >= LBRowLayout.wideThreshold)
-                        AccelColumnHeader(layout: layout)
-                            .padding(.top, 10)
-                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                            AccelRow(entry: entry, rank: index + 1, layout: layout) {
-                                model.screen = .accelerationEntry(entry.id)
+                        Section {
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                AccelRow(entry: entry, rank: index + 1, layout: layout) {
+                                    model.screen = .accelerationEntry(entry.id)
+                                }
                             }
+                        } header: {
+                            AccelColumnHeader(layout: layout)
+                                .padding(.top, 10)
+                                .background(Color.egBg)
                         }
                     }
                 } else if let error = model.accelerationError {
@@ -233,6 +237,7 @@ struct AccelerationEntryView: View {
     @State private var reporting = false
     @State private var confirmDelete = false
     @State private var confirmBlock = false
+    @State private var runToDelete: Int?
     @State private var notice: String?
     @State private var actionError: String?
 
@@ -247,7 +252,7 @@ struct AccelerationEntryView: View {
 
     private func detail(_ entry: AccelEntry, rank: Int) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
                 HStack {
                     EGBackButton(label: "ACCELERATION") {
                         model.screen = .acceleration
@@ -293,6 +298,10 @@ struct AccelerationEntryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if let runs = entry.otherRuns, !runs.isEmpty {
+                    AccelOtherRuns(runs: runs) { runToDelete = $0 }
+                }
+
                 if let notice {
                     Text(notice)
                         .font(.system(size: 11, weight: .semibold))
@@ -315,6 +324,22 @@ struct AccelerationEntryView: View {
                 Task {
                     do {
                         try await model.deleteAcceleration(id: entry.id)
+                    } catch {
+                        actionError = error.localizedDescription
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Delete this run?",
+            isPresented: Binding(get: { runToDelete != nil }, set: { if !$0 { runToDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: runToDelete
+        ) { id in
+            Button("Delete Run", role: .destructive) {
+                Task {
+                    do {
+                        try await model.deleteOtherAccelerationRun(id: id)
                     } catch {
                         actionError = error.localizedDescription
                     }
@@ -373,6 +398,85 @@ struct AccelerationEntryView: View {
     private func poundsPerHP(_ entry: AccelEntry) -> String {
         guard let weight = entry.weightLb, let hp = entry.hp, hp > 0 else { return "—" }
         return String(format: "%.1f", Double(weight) / Double(hp))
+    }
+}
+
+private struct AccelOtherRuns: View {
+    let runs: [AccelEntry]
+    let onDelete: (Int) -> Void
+
+    private let time: CGFloat = 52
+    private let trash: CGFloat = 32
+
+    private var deletable: Bool { runs.contains { $0.isOwner == true } }
+
+    var body: some View {
+        Section {
+            rows
+        } header: {
+            columnLabels
+        }
+    }
+
+    private var columnLabels: some View {
+        HStack(spacing: 8) {
+            EGColumnLabel(text: "OTHER RUNS").frame(maxWidth: .infinity, alignment: .leading)
+            EGColumnLabel(text: "0–60").frame(width: time, alignment: .trailing)
+            EGColumnLabel(text: "0–30").frame(width: time, alignment: .trailing)
+            EGColumnLabel(text: "¼ MI").frame(width: time, alignment: .trailing)
+            if deletable {
+                Color.clear.frame(width: trash, height: 1)
+            }
+        }
+        .padding(.vertical, 6)
+        .background(Color.egBg.padding(.horizontal, -16))
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(runs) { run in
+                HStack(spacing: 8) {
+                    Text(run.postedOn ?? "—")
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.egGrayDark)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(AccelFormat.number(run.zeroTo60))
+                        .font(.system(size: 13, weight: .heavy))
+                        .monospacedDigit()
+                        .frame(width: time, alignment: .trailing)
+                    stat(run.zeroTo30)
+                    stat(run.quarterMileSeconds)
+                    if deletable {
+                        Button {
+                            onDelete(run.id)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: trash, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.egGrayDark)
+                        .opacity(run.isOwner == true ? 1 : 0)
+                        .disabled(run.isOwner != true)
+                        .accessibilityLabel("Delete run")
+                    }
+                }
+                .frame(minHeight: 36)
+                .overlay(alignment: .top) {
+                    Color.egHairline.frame(height: 1)
+                }
+            }
+        }
+    }
+
+    private func stat(_ value: Double?) -> some View {
+        Text(AccelFormat.number(value))
+            .font(.system(size: 12))
+            .monospacedDigit()
+            .foregroundStyle(Color.egGrayDark)
+            .frame(width: time, alignment: .trailing)
     }
 }
 

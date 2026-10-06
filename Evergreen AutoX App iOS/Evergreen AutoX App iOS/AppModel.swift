@@ -106,8 +106,8 @@ final class AppModel {
         didSet { defaults.set(orgIDString, forKey: "orgID") }
     }
     // The name last posted with, offered as the default next time. Only the
-    // account name also sets it, so every post has to refresh it or a typo
-    // would stick.
+    // account's username also sets it, so every post has to refresh it or a
+    // typo would stick.
     var posterName: String {
         didSet { defaults.set(posterName, forKey: "posterName") }
     }
@@ -634,6 +634,11 @@ final class AppModel {
         loadAcceleration()
     }
 
+    func deleteOtherAccelerationRun(id: Int) async throws {
+        try await client.deleteAcceleration(id: id)
+        loadAcceleration()
+    }
+
     func blockAccelerationPoster(entryID: Int) async throws {
         let block = try await client.block(LBBlockInput(target: .acceleration(entryID)))
         blocks.removeAll { $0.id == block.id }
@@ -651,6 +656,9 @@ final class AppModel {
     }
 
     var signedIn: Bool { account?.signedIn == true }
+    // Apple often shares no name, and the server will not take posts from an
+    // account without one.
+    var needsUsername: Bool { signedIn && (account?.name ?? "").isEmpty }
 
     func loadAccount() async {
         if let loaded = try? await client.account() {

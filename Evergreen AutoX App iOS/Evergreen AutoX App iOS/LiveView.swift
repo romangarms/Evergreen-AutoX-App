@@ -18,9 +18,9 @@ struct LiveView: View {
                 if isPickingMe || model.showsMePrompt {
                     mePrompt
                 }
+                ResultsColumnHeader()
                 ScrollView {
                     VStack(spacing: 0) {
-                        ResultsColumnHeader()
                         ForEach(model.drivers) { driver in
                             ResultRowView(driver: driver, onTap: isPickingMe ? { pickMe(driver) } : nil)
                         }

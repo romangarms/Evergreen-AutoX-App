@@ -38,8 +38,10 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 > - Live tab: open the latest event, switch sessions, pull down to refresh. Do times and positions match
 >   what you saw at the event?
 > - Star a few cars, mark one as "me" (Setup tab), then check the Friends tab and the head-to-head compare.
-> - Events tab → Community: open a leaderboard, post a time (typed in, or imported from a TrackAddict CSV),
->   then delete it.
+> - Posting now needs Sign in with Apple. Sign in from Setup or the first time you post, pick a username if
+>   asked, and check your posts are still yours after deleting and reinstalling the app.
+> - Events tab → Community: create a leaderboard or JOIN one with a code, post a time (typed in, or imported
+>   from a TrackAddict CSV), then delete it.
 > - Events tab → Acceleration: if you have a TrackAddict drag-run log, post it with POST A TIME and check the
 >   0-60 and quarter-mile numbers against what TrackAddict showed.
 > - Anything confusing, slow, or wrong: screenshot it in TestFlight and send feedback, or email

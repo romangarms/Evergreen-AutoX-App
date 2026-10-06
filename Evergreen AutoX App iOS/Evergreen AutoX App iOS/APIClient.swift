@@ -2,6 +2,7 @@ import Foundation
 
 struct APIError: LocalizedError {
     let message: String
+    var status: Int?
     var errorDescription: String? { message }
 }
 
@@ -175,7 +176,10 @@ struct APIClient {
         }
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError(message: Self.errorMessage(data) ?? "Server returned \(http.statusCode) for \(path)")
+            throw APIError(
+                message: Self.errorMessage(data) ?? "Server returned \(http.statusCode) for \(path)",
+                status: http.statusCode
+            )
         }
         return try JSONDecoder().decode(T.self, from: data)
     }

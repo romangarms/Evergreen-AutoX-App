@@ -71,6 +71,7 @@ MAX_ACCELERATION_PER_OWNER = 20
 IDLE_DEVICE_DAYS = 90
 MAX_IDLE_DEVICES = 5000
 PRUNE_INTERVAL_SECONDS = 3600
+USERNAME_REQUIRED = 428
 # No 0/O or 1/I/L, since codes get read aloud and typed on a phone.
 JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 JOIN_CODE_LENGTH = 8
@@ -82,6 +83,7 @@ class Actor:
     is_admin: bool = False
     reads_unlisted: bool = False
     user_id: int | None = None
+    username: str | None = None
 
     @property
     def is_anonymous(self) -> bool:
@@ -187,13 +189,17 @@ def _device_actor(token: str) -> Actor:
             _last_prune = time.monotonic()
             _prune_devices(conn)
         user = conn.execute(
-            """SELECT users.id, users.apple_sub FROM devices
+            """SELECT users.id, users.apple_sub, users.name FROM devices
                JOIN users ON users.id = devices.user_id WHERE devices.token = ?""",
             (token,),
         ).fetchone()
     if user is None:
         return Actor(device_id=token)
-    return Actor(device_id=_account_owner_id(user["apple_sub"]), user_id=user["id"])
+    return Actor(
+        device_id=_account_owner_id(user["apple_sub"]),
+        user_id=user["id"],
+        username=user["name"],
+    )
 
 
 def get_actor(
@@ -671,13 +677,21 @@ def _owns(row, actor: Actor) -> bool:
     return row["owner_id"] is not None and row["owner_id"] == actor.device_id
 
 
-# Posting needs an account so a lost phone does not strand what was posted.
-# Editing does not, or a device could not tidy up what it posted before.
+# Posting needs an account so a lost phone does not strand what was posted,
+# and the account needs a username because Apple often shares no name and the
+# admin has to tell accounts apart. Editing needs neither, or a device could
+# not tidy up what it posted before.
 def _require_account(actor: Actor) -> None:
-    if not actor.is_admin and actor.user_id is None:
+    if actor.is_admin:
+        return
+    if actor.user_id is None:
         raise HTTPException(
             status_code=403,
             detail="Sign in with Apple to post. Update AutoX Live if you don't see how.",
+        )
+    if not actor.username:
+        raise HTTPException(
+            status_code=403, detail="Choose a username in Setup before posting."
         )
 
 
@@ -1421,8 +1435,10 @@ def get_account(actor: ActorDep):
         )
 
 
-# Apple only hands the app a name the first time someone signs in, so a later
-# sign-in without one keeps what is stored.
+# Every account has a username so the admin can tell people apart before they
+# post. The name Apple shares seeds it; Apple often shares none, and then the
+# sign-in is turned away with USERNAME_REQUIRED until the app sends one the
+# person typed. A username already stored is kept.
 @app.post("/api/account/apple")
 def sign_in_with_apple(body: AppleSignIn, token: DeviceTokenDep):
     try:
@@ -1431,6 +1447,17 @@ def sign_in_with_apple(body: AppleSignIn, token: DeviceTokenDep):
         raise HTTPException(
             status_code=401, detail="Apple did not confirm that sign-in"
         ) from exc
+    name = _clean(body.name)
+    # A name the word filter rejects counts as none, so the app asks for another.
+    if moderation.contains_blocked_word(name):
+        name = None
+    with db.session() as conn:
+        known = conn.execute(
+            "SELECT name FROM users WHERE apple_sub = ?", (claims["sub"],)
+        ).fetchone()
+    if not name and not (known and known["name"]):
+        raise HTTPException(status_code=USERNAME_REQUIRED, detail="Choose a username")
+    # Apple's code works once, so it is only spent on a sign-in that will go through.
     refresh_token = (
         apple.exchange_code(body.authorization_code)
         if body.authorization_code
@@ -1441,11 +1468,11 @@ def sign_in_with_apple(body: AppleSignIn, token: DeviceTokenDep):
             """INSERT INTO users (apple_sub, name, email, apple_refresh_token)
                VALUES (?, ?, ?, ?)
                ON CONFLICT (apple_sub) DO UPDATE SET
-                   name = COALESCE(excluded.name, name),
+                   name = COALESCE(name, excluded.name),
                    email = COALESCE(excluded.email, email),
                    apple_refresh_token = COALESCE(
                        excluded.apple_refresh_token, apple_refresh_token)""",
-            (claims["sub"], _clean(body.name), claims.get("email"), refresh_token),
+            (claims["sub"], name, claims.get("email"), refresh_token),
         )
         user = conn.execute(
             "SELECT * FROM users WHERE apple_sub = ?", (claims["sub"],)
@@ -1458,15 +1485,15 @@ def sign_in_with_apple(body: AppleSignIn, token: DeviceTokenDep):
         return _account_out(user)
 
 
-# The name is only a default for the poster field and what the admin sees; it
-# is not shown to other users.
+# The account's name is its username: what the admin sees and the default for
+# the poster field. It is not shown to other users.
 @app.patch("/api/account")
 def update_account(update: AccountUpdate, actor: WriterDep):
     if actor.user_id is None:
         raise HTTPException(status_code=401, detail="Not signed in")
     name = _clean(update.name)
     if not name:
-        raise HTTPException(status_code=400, detail="Name cannot be blank")
+        raise HTTPException(status_code=400, detail="Username cannot be blank")
     _reject_blocked_words(actor, name)
     with db.session() as conn:
         conn.execute("UPDATE users SET name = ? WHERE id = ?", (name, actor.user_id))
@@ -1574,16 +1601,20 @@ def list_acceleration(actor: ActorDep):
             if (actor.is_admin or not row["hidden"]) and row["owner_id"] not in blocked
         ]
     rows.sort(key=db.acceleration_sort_key)
-    # Every post is kept, but the board shows a poster's best run per vehicle.
-    # The admin gets every row, since each one can be hidden on its own.
-    entries, seen = [], set()
+    # Every post is kept, but the board ranks a poster's best run per vehicle
+    # and carries the rest inside it. The admin gets every row ranked, since
+    # each one can be hidden on its own.
+    entries, best = [], {}
     for row in rows:
+        entry = db.acceleration_to_dict(row, actor.device_id)
         if row["owner_id"] is not None and not actor.is_admin:
             vehicle = (row["owner_id"], row["year"], row["vehicle"].casefold())
-            if vehicle in seen:
+            if vehicle in best:
+                best[vehicle]["other_runs"].append(entry)
                 continue
-            seen.add(vehicle)
-        entries.append(db.acceleration_to_dict(row, actor.device_id))
+            best[vehicle] = entry
+        entry["other_runs"] = []
+        entries.append(entry)
     return entries
 
 

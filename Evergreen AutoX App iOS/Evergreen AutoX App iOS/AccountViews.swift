@@ -7,6 +7,23 @@ struct AppleSignInButton: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var message: String?
     @State private var nonce = ""
+    @State private var pending: PendingSignIn?
+    @State private var username = ""
+    @State private var usernameMessage: String?
+    @State private var saving = false
+
+    // What Apple returned for a sign-in the server will not finish until it
+    // has a username. Apple's token only lasts a few minutes.
+    private struct PendingSignIn {
+        let identityToken: String
+        let authorizationCode: String?
+        let user: String
+    }
+
+    // The server's answer when Apple shared no name and the account has none.
+    private static let usernameRequired = 428
+
+    private var trimmedUsername: String { username.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -32,6 +49,23 @@ struct AppleSignInButton: View {
             .frame(height: 44)
             EGErrorText(text: message)
         }
+        // Closing the sheet abandons the sign-in; no account exists yet.
+        .sheet(isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
+            EGSheetFrame(title: "Choose a Username", subtitle: "One more step to finish signing in.") {
+                Text("Your username identifies your account to the people who run the leaderboards. Other users don't see it; the name on each post is still yours to type.")
+                    .font(.system(size: 13))
+                    .fixedSize(horizontal: false, vertical: true)
+                EGFormField(label: "USERNAME", placeholder: "Your name or a nickname", text: $username)
+                EGErrorText(text: usernameMessage)
+                Button("FINISH SIGNING IN") {
+                    guard let pending else { return }
+                    Task { await finish(pending, name: trimmedUsername) }
+                }
+                .buttonStyle(EGButtonStyle(kind: .primary))
+                .disabled(saving || trimmedUsername.isEmpty)
+            }
+            .interactiveDismissDisabled()
+        }
     }
 
     private func signIn(_ credential: ASAuthorizationAppleIDCredential) async {
@@ -46,17 +80,40 @@ struct AppleSignInButton: View {
         if let shared {
             DeviceIdentity.appleName = shared
         }
-        let name = shared ?? DeviceIdentity.appleName
+        await finish(
+            PendingSignIn(
+                identityToken: identityToken,
+                authorizationCode: credential.authorizationCode.flatMap { String(data: $0, encoding: .utf8) },
+                user: credential.user
+            ),
+            name: shared ?? DeviceIdentity.appleName
+        )
+    }
+
+    private func finish(_ signIn: PendingSignIn, name: String?) async {
+        saving = true
+        defer { saving = false }
         do {
             try await model.signIn(
-                identityToken: identityToken,
+                identityToken: signIn.identityToken,
                 nonce: nonce,
-                authorizationCode: credential.authorizationCode.flatMap { String(data: $0, encoding: .utf8) },
+                authorizationCode: signIn.authorizationCode,
                 name: name
             )
-            DeviceIdentity.appleUser = credential.user
+            DeviceIdentity.appleUser = signIn.user
+            pending = nil
             message = nil
+        } catch let error as APIError where error.status == Self.usernameRequired {
+            if pending == nil, username.isEmpty {
+                username = model.posterName
+            }
+            // Only a username the person typed can have been turned down.
+            usernameMessage = pending == nil ? nil : "That username isn't allowed. Try another."
+            message = nil
+            pending = signIn
         } catch {
+            // An expired token cannot be retried, so the Apple button comes back.
+            pending = nil
             message = error.localizedDescription
         }
     }
@@ -73,6 +130,44 @@ struct SignInView: View {
     }
 }
 
+// Shown after sign-in when Apple shared no name to use as the username.
+struct UsernameView: View {
+    @Environment(AppModel.self) private var model
+    @State private var username = ""
+    @State private var message: String?
+    @State private var saving = false
+
+    private var trimmed: String { username.trimmingCharacters(in: .whitespaces) }
+
+    var body: some View {
+        EGSheetFrame(title: "Choose a Username", subtitle: "One more step before you post.") {
+            Text("Your username identifies your account to the people who run the leaderboards. Other users don't see it; the name on each post is still yours to type.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            EGFormField(label: "USERNAME", placeholder: "Your name or a nickname", text: $username)
+            EGErrorText(text: message)
+            Button("CONTINUE") {
+                Task { await save() }
+            }
+            .buttonStyle(EGButtonStyle(kind: .primary))
+            .disabled(saving || trimmed.isEmpty)
+        }
+        .onAppear {
+            if username.isEmpty { username = model.posterName }
+        }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await model.updateAccountName(trimmed)
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+
 struct AccountSection: View {
     @Environment(AppModel.self) private var model
     @State private var confirmingDelete = false
@@ -83,12 +178,12 @@ struct AccountSection: View {
 
     var body: some View {
         if model.signedIn {
-            Text("Signed in with Apple. Your name is filled in for you when you post; you can still change it on each post.")
+            Text("Signed in with Apple. Your username identifies your account and is filled in as your name when you post; other users only see the name on each post.")
                 .font(.system(size: 11))
                 .foregroundStyle(Color.egGrayDark)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                TextField("Your name", text: $name)
+                TextField("Username (needed to post)", text: $name)
                     .font(.system(size: 12))
                     .autocorrectionDisabled()
                     .padding(.horizontal, 9)

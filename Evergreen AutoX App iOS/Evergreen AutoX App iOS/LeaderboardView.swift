@@ -33,7 +33,7 @@ struct LeaderboardView: View {
     var body: some View {
         let entries = model.leaderboardEntries
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 VStack(alignment: .leading, spacing: 12) {
                     EGBackButton(label: "EVENTS") {
                         model.goBack()
@@ -115,12 +115,16 @@ struct LeaderboardView: View {
                         wide: width >= LBRowLayout.wideThreshold,
                         showsRaw: entries.contains { $0.best.legacy }
                     )
-                    LBColumnHeader(layout: layout)
-                        .padding(.top, 10)
-                    ForEach(entries) { entry in
-                        LBEntryRow(entry: entry, layout: layout) {
-                            model.open(screen: .leaderboardDriver(courseID, entry.id))
+                    Section {
+                        ForEach(entries) { entry in
+                            LBEntryRow(entry: entry, layout: layout) {
+                                model.open(screen: .leaderboardDriver(courseID, entry.id))
+                            }
                         }
+                    } header: {
+                        LBColumnHeader(layout: layout)
+                            .padding(.top, 10)
+                            .background(Color.egBg)
                     }
                 }
             }
@@ -286,7 +290,7 @@ struct LeaderboardDriverView: View {
         let topSpeed = lbRuns.compactMap(\.topSpeedMph).max()
 
         return ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
                 EGBackButton(label: "LEADERBOARD") {
                     model.screen = .leaderboard(courseID)
                 }
