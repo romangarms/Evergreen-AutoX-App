@@ -24,6 +24,11 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #status.error { color: var(--danger); font-weight: 600; background: #fbe9e7; border-radius: 6px; padding: 0.15rem 0.5rem; }
   #auth-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  header .back {
+    padding: 0.35rem 0.7rem; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); text-decoration: none; white-space: nowrap;
+  }
+  header .back:hover { background: var(--bg); }
   body.admin #auth-note { display: none; }
   nav .count { display: inline-block; margin-left: 0.35rem; padding: 0 0.4rem; border-radius: 8px;
     background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; }
@@ -145,6 +150,7 @@
 </head>
 <body>
 <header>
+  <a class="back" href="/app">&larr; Back to site</a>
   <h1>AutoX Live <span>dev console</span></h1>
   <nav>
     <button data-tab="leaderboard" class="active">Leaderboard</button>
