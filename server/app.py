@@ -1715,14 +1715,15 @@ async def parse_trackaddict(request: Request):
     return parsed
 
 
-@app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
+@app.get("/", include_in_schema=False)
 @app.get("/app", include_in_schema=False)
 def landing():
     return FileResponse(STATIC_DIR / "app.html")
+
+
+@app.get("/dev", include_in_schema=False)
+def dev_console():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/privacy", include_in_schema=False)
