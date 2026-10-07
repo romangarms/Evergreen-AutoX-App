@@ -1289,6 +1289,8 @@ def _people(conn) -> list[dict]:
     }
 
     def entry(kind: str, row_id: int, owner: str, **fields) -> dict:
+        # An owner can already see and post to the board, so it counts as joined.
+        joined_ids = sorted({*joined[owner], *owned[owner]})
         return {
             "kind": kind,
             "id": row_id,
@@ -1298,9 +1300,9 @@ def _people(conn) -> list[dict]:
             "courses": counts["courses"][owner],
             "runs": counts["runs"][owner],
             "acceleration": counts["acceleration_entries"][owner],
-            "joined": len(joined[owner]),
+            "joined": len(joined_ids),
             "owned_course_ids": owned[owner],
-            "joined_course_ids": joined[owner],
+            "joined_course_ids": joined_ids,
             "banned": owner in bans,
             "ban_id": bans.get(owner),
         }

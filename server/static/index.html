@@ -73,6 +73,8 @@
   #tab-moderation ul.picklist li { white-space: normal; cursor: default; border-bottom: 1px solid var(--border); border-radius: 0; padding: 0.5rem 0.45rem; }
   #tab-moderation ul.picklist li:last-child { border-bottom: none; }
   #mod-side ul.picklist { max-height: 32vh; }
+  .phones { margin: 0.5rem 0 0 0.25rem; padding-left: 0.75rem; border-left: 2px solid var(--border); }
+  ul.picklist li .phones .sub { color: var(--muted); font-size: 12px; }
   details.boards { margin-top: 0.4rem; }
   details.boards summary { display: inline-block; cursor: pointer; list-style: none; font-size: 12px;
     background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.7rem; }
@@ -950,16 +952,23 @@ function renderUsers() {
     li.style.cursor = "default";
     li.innerHTML = `<strong>${esc(personName(u))}</strong>${u.banned ? '<span class="badge hidden">banned</span>' : ""}${isAccount ? '<span class="badge">account</span>' : ""}<br>
       <span class="sub">${isAccount ? "Apple: " + esc([u.name, u.email].filter(Boolean).join(" · ") || "no name shared") : "phone #" + u.id + " · not signed in"}${u.names.length ? " · posts as " + esc(u.names.join(", ")) : ""} · created ${plural(u.courses, "board")} · posted ${plural(u.runs, "run")}, ${u.acceleration} accel<br>
-      last seen ${u.last_seen ? when(u.last_seen) : (isAccount ? "(signed out everywhere)" : "before tracking")}${u.first_seen ? " · first seen " + when(u.first_seen) : ""}</span>`;
+      last seen ${u.last_seen ? when(u.last_seen) : (isAccount ? "(signed out everywhere)" : "before tracking")}${u.first_seen ? (isAccount ? " · account created " : " · first seen ") + when(u.first_seen) : ""}</span>`;
     li.appendChild(labelRow(u.label, value =>
-      apiJSON(isAccount ? `/api/admin/users/${u.id}` : `/api/admin/devices/${u.id}`, "PATCH", { label: value })));
-    for (const d of u.devices) {
-      const sub = document.createElement("div");
-      sub.className = "sub";
-      sub.style.marginTop = "0.3rem";
-      sub.innerHTML = `phone #${d.id} · last seen ${d.last_seen ? when(d.last_seen) : "?"}`;
-      li.appendChild(sub);
-      li.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value }), `Private label for phone #${d.id}`));
+      apiJSON(isAccount ? `/api/admin/users/${u.id}` : `/api/admin/devices/${u.id}`, "PATCH", { label: value }),
+      isAccount ? "Private label for this account" : "Private label"));
+    if (isAccount) {
+      const phones = document.createElement("div");
+      phones.className = "phones";
+      phones.innerHTML = `<div class="sub">${u.devices.length ? `Signed in on ${plural(u.devices.length, "phone")}:` : "Not signed in on any phone right now."}</div>`;
+      for (const d of u.devices) {
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        sub.style.marginTop = "0.3rem";
+        sub.innerHTML = `phone #${d.id}${d.first_seen ? " · first seen " + when(d.first_seen) : ""} · last seen ${d.last_seen ? when(d.last_seen) : "?"}`;
+        phones.appendChild(sub);
+        phones.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value }), `Private label for phone #${d.id}`));
+      }
+      li.appendChild(phones);
     }
     const actions = document.createElement("div");
     actions.className = "row";
@@ -970,7 +979,7 @@ function renderUsers() {
     boards.className = "boards";
     boards.open = openBoards.has(boardsKey);
     boards.ontoggle = () => { boards.open ? openBoards.add(boardsKey) : openBoards.delete(boardsKey); };
-    boards.innerHTML = `<summary class="btn">Boards (${u.joined_course_ids.length} joined, ${u.owned_course_ids.length} owned)</summary>`;
+    boards.innerHTML = `<summary class="btn">Boards (${u.joined_course_ids.length} joined, owns ${u.owned_course_ids.length} of them)</summary>`;
     const onCourse = async (course, action) => {
       await action();
       await loadUsers();
@@ -980,7 +989,7 @@ function renderUsers() {
       const owns = u.owned_course_ids.includes(c.id);
       const row = document.createElement("div");
       row.className = "row";
-      row.innerHTML = `<label class="check inline" style="flex:1;min-width:0"><input type="checkbox"${u.joined_course_ids.includes(c.id) ? " checked" : ""}> ${esc(c.name)}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${owns ? '<span class="badge">owner</span>' : ""}</label>${owns ? "" : '<button class="btn">Make owner</button>'}`;
+      row.innerHTML = `<label class="check inline" style="flex:1;min-width:0"><input type="checkbox"${u.joined_course_ids.includes(c.id) ? " checked" : ""}${owns ? ' disabled title="The owner is always on the board"' : ""}> ${esc(c.name)}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${owns ? '<span class="badge">owner</span>' : ""}</label>${owns ? "" : '<button class="btn">Make owner</button>'}`;
       const box = row.querySelector("input");
       box.onchange = async () => {
         box.disabled = true;

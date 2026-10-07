@@ -314,7 +314,8 @@ def test_admin_adds_and_removes_board_members(client, sign_in):
         if p["owned_course_ids"]
     )
     assert owner_row["owned_course_ids"] == [board["id"]]
-    assert owner_row["joined_course_ids"] == []
+    assert owner_row["joined_course_ids"] == [board["id"]]
+    assert owner_row["joined"] == 1
 
     bare = person(client, "device")
     added = client.post(
