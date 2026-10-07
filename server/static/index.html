@@ -22,7 +22,15 @@
   header h1 span { color: var(--accent); }
   #status { color: var(--muted); font-family: var(--mono); font-size: 12px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #status.error { color: var(--danger); }
+  #status.error { color: var(--danger); font-weight: 600; background: #fbe9e7; border-radius: 6px; padding: 0.15rem 0.5rem; }
+  #auth-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  body.admin #auth-note { display: none; }
+  nav .count { display: inline-block; margin-left: 0.35rem; padding: 0 0.4rem; border-radius: 8px;
+    background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; }
+  nav .count:empty { display: none; }
+  ul.picklist:empty::after { content: attr(data-empty); color: var(--muted); padding: 0.3rem 0.45rem; display: block; }
+  .hint { color: var(--muted); font-size: 11px; margin: 0 0 0.4rem; }
+  #lb-course-meta { font-size: 12px; margin-top: 0.3rem; }
   nav { display: flex; gap: 2px; margin-left: 1rem; }
   nav button {
     border: 1px solid transparent; background: none; padding: 0.35rem 0.8rem;
@@ -65,6 +73,15 @@
   #tab-moderation ul.picklist li { white-space: normal; cursor: default; border-bottom: 1px solid var(--border); border-radius: 0; padding: 0.5rem 0.45rem; }
   #tab-moderation ul.picklist li:last-child { border-bottom: none; }
   #mod-side ul.picklist { max-height: 32vh; }
+  details.boards { margin-top: 0.4rem; }
+  details.boards summary { display: inline-block; cursor: pointer; list-style: none; font-size: 12px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.7rem; }
+  details.boards summary::-webkit-details-marker { display: none; }
+  details.boards summary::after { content: " ▾"; }
+  details.boards[open] summary::after { content: " ▴"; }
+  details.boards .row { padding: 0.2rem 0.5rem; flex-wrap: nowrap; }
+  details.boards .row:hover { background: var(--bg); }
+  details.boards .row .btn { padding: 0.1rem 0.5rem; font-size: 12px; }
 
   ul.picklist { list-style: none; padding: 0; margin: 0; max-height: 60vh; overflow-y: auto; }
   ul.picklist li { padding: 0.3rem 0.45rem; border-radius: 5px; cursor: pointer;
@@ -107,6 +124,7 @@
   .cols .panel { flex: 1; min-width: 0; }
   .cols .panel.wide { flex: 2; }
   .cols ul.picklist { max-height: 65vh; }
+  .cols ul.picklist li { white-space: normal; }
   .cols pre { max-height: 65vh; }
 
   #auth-btn { font-size: 12px; padding: 0.2rem 0.6rem; }
@@ -131,10 +149,11 @@
     <button data-tab="acceleration">Acceleration</button>
     <button data-tab="speedhive">Speedhive</button>
     <button data-tab="gglc">GGLC</button>
-    <button data-tab="moderation" class="admin-only">Moderation</button>
+    <button data-tab="moderation" class="admin-only">Moderation<span id="mod-count" class="count" title="Open reports"></span></button>
   </nav>
   <div style="flex:1"></div>
   <span id="status"></span>
+  <span id="auth-note">Read-only</span>
   <button id="auth-btn" class="btn">Sign in</button>
 </header>
 
@@ -157,10 +176,10 @@
   <div id="lb-layout">
     <div id="lb-sidebar">
       <div class="panel">
-        <h2>Courses</h2>
+        <h2>Boards</h2>
         <ul id="course-list" class="picklist"><li class="muted">(loading)</li></ul>
         <div style="margin-top:0.5rem" class="admin-only">
-          <button class="btn" id="course-new-btn">+ New course</button>
+          <button class="btn" id="course-new-btn">+ New board</button>
         </div>
         <form id="course-form" style="display:none; margin-top:0.6rem" class="form-grid admin-only">
           <label class="field">name <input id="course-name" class="w-lg" required></label>
@@ -174,7 +193,7 @@
           </div>
         </form>
         <form id="owner-form" style="display:none; margin-top:0.6rem" class="form-grid admin-only">
-          <label class="field">owner device ID (from the app: Setup → Dev mode → Copy device ID; empty = no owner)
+          <label class="field">owner device ID (from the app: Setup → Dev mode → Copy device ID; empty = no owner). To pick a person by name instead, use Make owner under their Boards list in Moderation.
             <input id="owner-token" class="w-lg" autocomplete="off" spellcheck="false"></label>
           <div class="actions">
             <button class="btn primary" type="submit">Set owner</button>
@@ -184,6 +203,7 @@
       </div>
       <div class="panel admin-only">
         <h2>TrackAddict import</h2>
+        <p class="hint">Parse a TrackAddict CSV log, then click a lap to fill the Add run form.</p>
         <div class="row">
           <input id="ta-file" type="file" accept=".csv" style="max-width:100%">
           <button class="btn" id="ta-parse-btn">Parse</button>
@@ -195,16 +215,16 @@
     <div id="lb-main">
       <div class="panel">
         <div class="row" style="justify-content:space-between">
-          <h2 id="lb-title" style="margin:0">No course selected</h2>
+          <h2 id="lb-title" style="margin:0">No board selected</h2>
           <div class="row" id="lb-course-actions" style="display:none">
-            <span class="muted" id="lb-course-meta"></span>
             <label class="check inline admin-only" title="Hidden boards disappear from the app and the public API."><input id="course-hidden" type="checkbox"> hidden</label>
             <label class="check inline admin-only" title="Unlisted boards only reach app users who created them or joined with the code. The website still lists them."><input id="course-unlisted" type="checkbox"> unlisted</label>
-            <button class="btn admin-only" id="course-edit-btn">Edit course</button>
+            <button class="btn admin-only" id="course-edit-btn">Edit board</button>
             <button class="btn admin-only" id="course-owner-btn">Set owner</button>
-            <button class="btn danger admin-only" id="course-del-btn">Delete course</button>
+            <button class="btn danger admin-only" id="course-del-btn">Delete board</button>
           </div>
         </div>
+        <div class="muted" id="lb-course-meta"></div>
         <div id="lb-members" class="admin-only" style="font-size:11px;margin-top:0.4rem"></div>
         <div class="table-scroll" style="margin-top:0.5rem">
           <table id="lb-table">
@@ -213,7 +233,7 @@
               <th>Driver</th><th>Vehicle</th><th class="num">HP</th>
               <th class="num">Top</th><th class="num">Avg</th><th>Date</th><th class="admin-only">Hidden</th><th class="admin-only"></th><th class="admin-only"></th>
             </tr></thead>
-            <tbody><tr><td colspan="12" class="muted">Select a course on the left.</td></tr></tbody>
+            <tbody><tr><td colspan="12" class="muted">Select a board on the left.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -239,7 +259,7 @@
       </div>
 
       <details class="json">
-        <summary>Last response JSON</summary>
+        <summary>Last response JSON (click a run to see its record)</summary>
         <pre id="lb-json">(nothing yet)</pre>
       </details>
     </div>
@@ -260,12 +280,13 @@
           <th class="num">1/4 s</th><th class="num">1/4 mph</th><th class="num">1/8 s</th><th class="num">1/8 mph</th>
           <th class="admin-only">Hidden</th><th class="admin-only"></th><th class="admin-only"></th>
         </tr></thead>
-        <tbody><tr><td colspan="15" class="muted">(open the tab to load)</td></tr></tbody>
+        <tbody><tr><td colspan="15" class="muted">(loading)</td></tr></tbody>
       </table>
     </div>
   </div>
   <div class="panel admin-only" style="margin-top:1rem">
     <h2>TrackAddict import</h2>
+    <p class="hint">Parse a TrackAddict drag log, then click a run to fill the Add entry form.</p>
     <div class="row">
       <input id="accel-ta-file" type="file" accept=".csv" style="max-width:100%">
       <button class="btn" id="accel-ta-parse-btn">Parse</button>
@@ -294,7 +315,7 @@
     </form>
   </div>
   <details class="json" style="margin-top:1rem">
-    <summary>Last response JSON</summary>
+    <summary>Last response JSON (click an entry to see its record)</summary>
     <pre id="accel-json">(nothing yet)</pre>
   </details>
 </section>
@@ -307,15 +328,15 @@
           <h2 style="margin:0">Reports</h2>
           <button class="btn" id="reports-load-btn">Refresh</button>
         </div>
-        <p class="muted" style="font-size:11px;margin:0.4rem 0">Flags sent from the app.</p>
+        <p class="muted" style="font-size:11px;margin:0.4rem 0">Flags sent from the app. Open shows the reported item; Dismiss clears the report without touching it.</p>
         <ul id="report-list" class="picklist"></ul>
       </div>
       <div class="panel">
         <div class="row" style="justify-content:space-between">
-          <h2 style="margin:0">Banned devices</h2>
+          <h2 style="margin:0">Bans</h2>
           <button class="btn" id="bans-load-btn">Refresh</button>
         </div>
-        <p class="muted" style="font-size:11px;margin:0.4rem 0">Ban a poster from a report. A ban blocks the device from writing and hides everything it posted; lifting it leaves that content hidden.</p>
+        <p class="muted" style="font-size:11px;margin:0.4rem 0">Ban someone from a report or from Users. A ban blocks them from writing and hides everything they posted; lifting it leaves that content hidden.</p>
         <ul id="ban-list" class="picklist"></ul>
       </div>
     </div>
@@ -324,11 +345,17 @@
         <h2 style="margin:0">Users</h2>
         <button class="btn" id="users-load-btn">Refresh</button>
       </div>
-      <p class="muted" style="font-size:11px;margin:0.4rem 0">Every account, with the phones signed in to it, and every phone that has reached the leaderboard API without signing in, newest activity first. The names are what they posted under; the labels are yours.</p>
+      <p class="muted" style="font-size:11px;margin:0.4rem 0">Every account, with the phones signed in to it, and every phone that has reached the leaderboard API without signing in, newest activity first. The names are what they posted under; the labels are private notes only you see.</p>
       <div class="row">
-        <input id="users-filter" type="search" placeholder="Filter" style="flex:1;min-width:0">
-        <label class="muted" style="font-size:12px">"Add to board" and "Make owner" act on
-          <select id="users-board"><option value="">(pick a board)</option></select></label>
+        <input id="users-filter" type="search" placeholder="Search by name, label, email or #id" style="flex:1;min-width:0">
+        <select id="users-show">
+          <option value="all">Everyone</option>
+          <option value="accounts">Accounts</option>
+          <option value="phones">Phones not signed in</option>
+          <option value="active">Has posted or joined</option>
+          <option value="banned">Banned</option>
+        </select>
+        <span id="users-count" class="muted" style="font-size:12px"></span>
       </div>
       <ul id="user-list" class="picklist" style="margin-top:0.5rem"></ul>
     </div>
@@ -344,8 +371,8 @@
   </div>
   <div class="cols">
     <div class="panel"><h2>Events</h2><ul id="sh-events" class="picklist"></ul></div>
-    <div class="panel"><h2>Sessions</h2><ul id="sh-sessions" class="picklist"></ul></div>
-    <div class="panel"><h2>Drivers</h2><ul id="sh-drivers" class="picklist"></ul></div>
+    <div class="panel"><h2>Sessions</h2><ul id="sh-sessions" class="picklist" data-empty="(pick an event)"></ul></div>
+    <div class="panel"><h2>Drivers</h2><ul id="sh-drivers" class="picklist" data-empty="(pick a session)"></ul></div>
     <div class="panel wide"><h2>Raw JSON</h2><pre id="sh-json">(click a driver)</pre></div>
   </div>
 </section>
@@ -361,8 +388,8 @@
   </div>
   <div class="cols">
     <div class="panel"><h2>Events</h2><ul id="gglc-events" class="picklist"></ul></div>
-    <div class="panel"><h2>Classes</h2><ul id="gglc-classes" class="picklist"></ul></div>
-    <div class="panel"><h2>Drivers</h2><ul id="gglc-drivers" class="picklist"></ul></div>
+    <div class="panel"><h2>Classes</h2><ul id="gglc-classes" class="picklist" data-empty="(pick an event)"></ul></div>
+    <div class="panel"><h2>Drivers</h2><ul id="gglc-drivers" class="picklist" data-empty="(pick a class)"></ul></div>
     <div class="panel wide"><h2>Raw JSON</h2><pre id="gglc-json">(click a driver)</pre></div>
   </div>
 </section>
@@ -376,13 +403,21 @@ const setStatus = (msg, isError) => {
   statusEl.classList.toggle("error", !!isError);
 };
 
+const TABS = ["leaderboard", "acceleration", "speedhive", "gglc", "moderation"];
 function showTab(name) {
+  history.replaceState(null, "", "#" + name);
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + name));
   if (name === "acceleration") loadAcceleration();
   if (name === "moderation") { loadReports(); loadBans(); loadUsers(); }
   if (name === "speedhive" && shLoadedOrg !== $("org-input").value) loadShEvents();
   if (name === "gglc" && gglcLoadedYear !== $("gglc-year").value) loadGglcEvents();
+}
+function openHashTab() {
+  const tab = location.hash.slice(1);
+  const ok = TABS.includes(tab) && (tab !== "moderation" || !!adminUser);
+  if (ok) showTab(tab);
+  return ok;
 }
 document.querySelectorAll("nav button").forEach(btn => {
   btn.onclick = () => showTab(btn.dataset.tab);
@@ -435,6 +470,7 @@ $("login-form").onsubmit = async e => {
   // Hidden boards and runs are only listed for the admin.
   loadCourses(currentCourse?.id);
   resetAcceleration();
+  loadReports();
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
 $("auth-btn").onclick = async () => {
@@ -444,6 +480,7 @@ $("auth-btn").onclick = async () => {
   renderAuth();
   // Hiding the admin panels is not enough; what they loaded has to go too.
   $("report-list").innerHTML = "";
+  $("mod-count").textContent = "";
   $("ban-list").innerHTML = "";
   users = [];
   usersLoaded = false;
@@ -453,7 +490,7 @@ $("auth-btn").onclick = async () => {
   resetAcceleration();
 };
 function renderAuth() {
-  $("auth-btn").textContent = adminUser ? `Sign out (${adminUser})` : "Sign in";
+  $("auth-btn").textContent = adminUser ? `Sign out (${adminUser})` : "Admin sign in";
   document.body.classList.toggle("admin", !!adminUser);
   if (!adminUser && $("tab-moderation").classList.contains("active")) showTab("leaderboard");
 }
@@ -515,10 +552,22 @@ function fillList(ul, items, labelFn, onClick) {
   if (!items.length) ul.innerHTML = "<li class='muted'>(none)</li>";
 }
 
+// The server stores UTC as "YYYY-MM-DD HH:MM:SS".
+function when(ts) {
+  if (!ts) return "";
+  const date = new Date(ts.replace(" ", "T") + "Z");
+  if (isNaN(date)) return esc(ts);
+  const opts = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  if (date.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return `<span title="${esc(ts)} UTC">${esc(date.toLocaleString(undefined, opts))}</span>`;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // ---------- Leaderboard ----------
 let currentCourse = null;
+let allCourses = [];
 let editingRunId = null;
 let editingCourse = false;
 
@@ -529,9 +578,8 @@ async function loadCourses(selectId) {
   fillList($("course-list"), courses,
     c => `${esc(c.name)}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}<br><span class="sub">#${c.id}${c.region ? " · " + esc(c.region) : ""} · ${c.distance_miles ?? "?"} mi${c.created_by ? " · by " + esc(c.created_by) : ""}</span>`,
     c => selectCourse(c));
-  $("users-board").innerHTML = '<option value="">(pick a board)</option>' +
-    courses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
-  $("users-board").value = currentCourse?.id ?? "";
+  allCourses = courses;
+  if (usersLoaded) renderUsers();
   if (selectId != null) {
     const course = courses.find(c => c.id === selectId);
     if (course) {
@@ -547,21 +595,20 @@ async function loadCourses(selectId) {
 
 function clearCourse() {
   currentCourse = null;
-  $("users-board").value = "";
   cancelRunEdit();
   $("course-form").style.display = "none";
   $("owner-form").style.display = "none";
-  $("lb-title").textContent = "No course selected";
+  $("lb-title").textContent = "No board selected";
+  $("lb-course-meta").textContent = "";
   $("lb-members").innerHTML = "";
   $("lb-course-actions").style.display = "none";
   $("lb-table").querySelector("tbody").innerHTML =
-    "<tr><td colspan='12' class='muted'>Select a course on the left.</td></tr>";
+    "<tr><td colspan='12' class='muted'>Select a board on the left.</td></tr>";
   $("lb-json").textContent = "(nothing yet)";
 }
 
 async function selectCourse(course) {
   currentCourse = course;
-  $("users-board").value = course.id;
   cancelRunEdit();
   $("lb-course-actions").style.display = "";
   await refreshLeaderboard();
@@ -573,12 +620,14 @@ async function refreshLeaderboard() {
   currentCourse = data.course;
   showJSON(data);
   $("lb-title").textContent = data.course.name;
-  const meta = [`${data.runs.length} runs`];
+  const meta = [plural(data.runs.length, "run")];
   if (data.course.region) meta.push(data.course.region);
   if (data.course.distance_miles) meta.push(`${data.course.distance_miles} mi`);
   if (data.course.legacy_distance_miles) meta.push(`legacy ${data.course.legacy_distance_miles} mi`);
   if (data.course.created_by) meta.push(`by ${data.course.created_by}`);
-  meta.push(data.course.has_owner ? "owned by a device" : "no owner");
+  if (adminUser && !usersLoaded) await loadUsers();
+  const owner = users.find(u => u.owned_course_ids.includes(data.course.id));
+  meta.push(owner ? `owner: ${personName(owner)}` : data.course.has_owner ? "has an owner" : "no owner");
   if (data.course.unlisted) meta.push(`unlisted, join code ${data.course.join_code ?? "(sign in to see)"}`);
   if (data.course.description) meta.push(data.course.description);
   $("lb-course-meta").textContent = meta.join(" · ");
@@ -594,11 +643,11 @@ const personName = p => p.label ?? p.name ?? p.names[0] ?? `(unnamed ${p.kind} #
 function renderMembers(members) {
   const box = $("lb-members");
   const course = currentCourse;
-  box.innerHTML = `<span class="muted">Members: ${members.length ? "" : "(none; add people from Moderation, or share the join code)"}</span>`;
+  box.innerHTML = `<span class="muted">Members: ${members.length ? "" : "(none; tick this board under a user in Moderation, or share the join code)"}</span>`;
   for (const m of members) {
     const chip = document.createElement("span");
     chip.className = "badge";
-    chip.title = `joined ${m.joined_at}`;
+    chip.title = `joined ${m.joined_at} UTC`;
     chip.innerHTML = `${esc(personName(m))} <a href="#" title="Remove from this board">×</a>`;
     chip.querySelector("a").onclick = async e => {
       e.preventDefault();
@@ -715,7 +764,7 @@ $("run-cancel-btn").onclick = () => { cancelRunEdit(); refreshLeaderboard(); };
 
 $("run-form").onsubmit = async e => {
   e.preventDefault();
-  if (!currentCourse) { setStatus("select a course first", true); return; }
+  if (!currentCourse) { setStatus("select a board first", true); return; }
   const body = Object.fromEntries(Object.entries(runFields).map(([k, fn]) => [k, fn()]));
   const result = editingRunId
     ? await apiJSON(`/api/leaderboard/runs/${editingRunId}`, "PATCH", body)
@@ -779,6 +828,7 @@ $("owner-form").onsubmit = async e => {
   const token = $("owner-token").value.trim();
   await apiJSON(`/api/leaderboard/courses/${currentCourse.id}/owner`, "PUT", { device_token: token || null });
   $("owner-form").style.display = "none";
+  if (usersLoaded) await loadUsers();
   refreshLeaderboard();
 };
 
@@ -793,7 +843,8 @@ async function loadReports() {
   const reports = await api("/api/leaderboard/reports");
   const ul = $("report-list");
   ul.innerHTML = "";
-  if (!reports.length) ul.innerHTML = "<li class='muted'>(no reports)</li>";
+  $("mod-count").textContent = reports.length || "";
+  if (!reports.length) ul.innerHTML = "<li class='muted'>No open reports.</li>";
   for (const r of reports) {
     const target = r.target
       ? (r.target_type === "course"
@@ -803,7 +854,7 @@ async function loadReports() {
           : `run ${esc(r.target.driver)} ${r.target.time} on “${esc(r.target.course_name)}”`)
       : `${r.target_type} #${r.target_id} (deleted)`;
     const li = document.createElement("li");
-    li.innerHTML = `${target}<br><span class="sub">${esc(r.reason ?? "")} · ${esc(r.created_at)}</span>
+    li.innerHTML = `${target}<br><span class="sub">${esc(r.reason ?? "")} · ${when(r.created_at)}</span>
       <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="open">Open</button><button class="btn" data-act="dismiss">Dismiss</button>${r.target ? `<label class="check inline"><input type="checkbox" data-act="hide"${r.target.hidden ? " checked" : ""}> hidden</label>${r.target.has_owner ? '<button class="btn danger" data-act="ban">Ban poster</button>' : ""}` : ""}</div>`;
     const courseId = r.target ? (r.target_type === "course" ? r.target.id : r.target.course_id) : null;
     li.querySelector("[data-act=open]").onclick = e => {
@@ -850,10 +901,10 @@ async function loadBans() {
   const bans = await api("/api/leaderboard/bans");
   const ul = $("ban-list");
   ul.innerHTML = "";
-  if (!bans.length) ul.innerHTML = "<li class='muted'>(no bans)</li>";
+  if (!bans.length) ul.innerHTML = "<li class='muted'>Nobody is banned.</li>";
   for (const b of bans) {
     const li = document.createElement("li");
-    li.innerHTML = `${esc(b.label ?? "(unnamed)")}<br><span class="sub">${esc(b.reason ?? "")} · ${esc(b.created_at)}</span>
+    li.innerHTML = `${esc(b.label ?? "(unnamed)")}<br><span class="sub">${esc(b.reason ?? "")} · ${when(b.created_at)}</span>
       <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="unban">Lift ban</button></div>`;
     li.querySelector("[data-act=unban]").onclick = async e => {
       e.stopPropagation();
@@ -865,11 +916,11 @@ async function loadBans() {
 }
 $("bans-load-btn").onclick = loadBans;
 
-function labelRow(value, save) {
+function labelRow(value, save, placeholder = "Private label") {
   const row = document.createElement("div");
   row.className = "row";
   row.style.marginTop = "0.3rem";
-  row.innerHTML = `<input maxlength="80" placeholder="Label" value="${esc(value ?? "")}" style="flex:1;min-width:0"><button class="btn">Save</button>`;
+  row.innerHTML = `<input maxlength="80" placeholder="${esc(placeholder)}" value="${esc(value ?? "")}" style="flex:1;min-width:0"><button class="btn">Save</button>`;
   const input = row.querySelector("input");
   const run = async () => { await save(input.value); loadUsers(); };
   row.querySelector("button").onclick = run;
@@ -877,46 +928,79 @@ function labelRow(value, save) {
   return row;
 }
 
+const openBoards = new Set();
 function renderUsers() {
   const ul = $("user-list");
   const filter = $("users-filter").value.trim().toLowerCase();
-  const shown = users.filter(u => !filter || [u.label, u.name, u.email, ...u.names, ...u.devices.map(d => d.label), `${u.kind} #${u.id}`].some(s => s && s.toLowerCase().includes(filter)));
+  const show = $("users-show").value;
+  const inView = u => show === "all"
+    || (show === "accounts" && u.kind === "user")
+    || (show === "phones" && u.kind === "device")
+    || (show === "active" && u.courses + u.runs + u.acceleration + u.joined > 0)
+    || (show === "banned" && u.banned);
+  const shown = users.filter(u => inView(u) && (!filter || [u.label, u.name, u.email, ...u.names, ...u.devices.map(d => d.label), `${u.kind} #${u.id}`, `#${u.id}`].some(s => s && s.toLowerCase().includes(filter))));
+  $("users-count").textContent = usersLoaded ? `${shown.length} of ${users.length}` : "";
   const accounts = users.filter(u => u.kind === "user");
   ul.innerHTML = "";
-  if (usersLoaded && !shown.length) ul.innerHTML = "<li class='muted'>(no users)</li>";
+  if (usersLoaded && !shown.length) ul.innerHTML = `<li class='muted'>${users.length ? "Nobody matches." : "No users yet."}</li>`;
   for (const u of shown) {
     const isAccount = u.kind === "user";
     const who = { kind: u.kind, id: u.id };
     const li = document.createElement("li");
     li.style.cursor = "default";
-    li.innerHTML = `${esc(personName(u))}${u.banned ? '<span class="badge hidden">banned</span>' : ""}${isAccount ? '<span class="badge">account</span>' : ""}<br>
-      <span class="sub">${isAccount ? "Apple: " + esc([u.name, u.email].filter(Boolean).join(" · ") || "no name shared") : "phone #" + u.id + " · not signed in"}${u.names.length ? " · posts as " + esc(u.names.join(", ")) : ""} · ${u.courses} boards · ${u.runs} runs · ${u.acceleration} accel · joined ${u.joined}<br>
-      last seen ${esc(u.last_seen ?? (isAccount ? "(signed out everywhere)" : "before tracking"))}${u.first_seen ? " · first " + esc(u.first_seen) : ""}</span>`;
+    li.innerHTML = `<strong>${esc(personName(u))}</strong>${u.banned ? '<span class="badge hidden">banned</span>' : ""}${isAccount ? '<span class="badge">account</span>' : ""}<br>
+      <span class="sub">${isAccount ? "Apple: " + esc([u.name, u.email].filter(Boolean).join(" · ") || "no name shared") : "phone #" + u.id + " · not signed in"}${u.names.length ? " · posts as " + esc(u.names.join(", ")) : ""} · created ${plural(u.courses, "board")} · posted ${plural(u.runs, "run")}, ${u.acceleration} accel<br>
+      last seen ${u.last_seen ? when(u.last_seen) : (isAccount ? "(signed out everywhere)" : "before tracking")}${u.first_seen ? " · first seen " + when(u.first_seen) : ""}</span>`;
     li.appendChild(labelRow(u.label, value =>
       apiJSON(isAccount ? `/api/admin/users/${u.id}` : `/api/admin/devices/${u.id}`, "PATCH", { label: value })));
     for (const d of u.devices) {
       const sub = document.createElement("div");
       sub.className = "sub";
       sub.style.marginTop = "0.3rem";
-      sub.textContent = `phone #${d.id} · last seen ${d.last_seen ?? "?"}`;
+      sub.innerHTML = `phone #${d.id} · last seen ${d.last_seen ? when(d.last_seen) : "?"}`;
       li.appendChild(sub);
-      li.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value })));
+      li.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value }), `Private label for phone #${d.id}`));
     }
     const actions = document.createElement("div");
     actions.className = "row";
     actions.style.marginTop = "0.3rem";
-    actions.innerHTML = `<button class="btn" data-act="member">Add to board</button><button class="btn" data-act="owner">Make owner</button><button class="btn${u.banned ? "" : " danger"}" data-act="ban">${u.banned ? "Lift ban" : "Ban"}</button>`;
-    const onCourse = action => async () => {
-      const courseId = Number($("users-board").value);
-      if (!courseId) { setStatus("pick a board first", true); return; }
-      await action({ id: courseId });
-      if (currentCourse?.id === courseId) await refreshLeaderboard();
-      loadUsers();
+    actions.innerHTML = `<button class="btn${u.banned ? "" : " danger"}" data-act="ban">${u.banned ? "Lift ban" : "Ban"}</button>`;
+    const boardsKey = `${u.kind}:${u.id}`;
+    const boards = document.createElement("details");
+    boards.className = "boards";
+    boards.open = openBoards.has(boardsKey);
+    boards.ontoggle = () => { boards.open ? openBoards.add(boardsKey) : openBoards.delete(boardsKey); };
+    boards.innerHTML = `<summary class="btn">Boards (${u.joined_course_ids.length} joined, ${u.owned_course_ids.length} owned)</summary>`;
+    const onCourse = async (course, action) => {
+      await action();
+      await loadUsers();
+      if (currentCourse?.id === course.id) refreshLeaderboard();
     };
-    actions.querySelector("[data-act=member]").onclick = onCourse(course =>
-      apiJSON(`/api/leaderboard/courses/${course.id}/members`, "POST", who));
-    actions.querySelector("[data-act=owner]").onclick = onCourse(course =>
-      apiJSON(`/api/leaderboard/courses/${course.id}/owner`, "PUT", { person: who }));
+    for (const c of allCourses) {
+      const owns = u.owned_course_ids.includes(c.id);
+      const row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = `<label class="check inline" style="flex:1;min-width:0"><input type="checkbox"${u.joined_course_ids.includes(c.id) ? " checked" : ""}> ${esc(c.name)}${c.unlisted ? '<span class="badge">unlisted</span>' : ""}${c.hidden ? '<span class="badge hidden">hidden</span>' : ""}${owns ? '<span class="badge">owner</span>' : ""}</label>${owns ? "" : '<button class="btn">Make owner</button>'}`;
+      const box = row.querySelector("input");
+      box.onchange = async () => {
+        box.disabled = true;
+        try {
+          await onCourse(c, () => box.checked
+            ? apiJSON(`/api/leaderboard/courses/${c.id}/members`, "POST", who)
+            : api(`/api/leaderboard/courses/${c.id}/members/${u.kind}/${u.id}`, { method: "DELETE" }));
+        } catch (err) {
+          box.checked = !box.checked;
+          box.disabled = false;
+          throw err;
+        }
+      };
+      if (!owns) {
+        armConfirm(row.querySelector("button"), () => onCourse(c, () =>
+          apiJSON(`/api/leaderboard/courses/${c.id}/owner`, "PUT", { person: who })));
+      }
+      boards.appendChild(row);
+    }
+    if (!allCourses.length) boards.insertAdjacentHTML("beforeend", "<div class='muted'>(no boards)</div>");
     const ban = actions.querySelector("[data-act=ban]");
     if (u.banned) {
       ban.onclick = async () => {
@@ -931,6 +1015,7 @@ function renderUsers() {
         loadBans();
       });
     }
+    li.appendChild(boards);
     li.appendChild(actions);
     if (!isAccount && accounts.length && u.courses + u.runs + u.acceleration + u.joined > 0) {
       const move = document.createElement("div");
@@ -956,6 +1041,7 @@ async function loadUsers() {
 }
 $("users-load-btn").onclick = loadUsers;
 $("users-filter").oninput = renderUsers;
+$("users-show").onchange = renderUsers;
 
 $("ta-parse-btn").onclick = async () => {
   const file = $("ta-file").files[0];
@@ -1199,6 +1285,8 @@ async function loadGglcEvent(date) {
 
 fetch("/api/admin/session").then(res => res.json()).then(data => { adminUser = data.user; }).catch(() => {}).finally(() => {
   renderAuth();
+  if (!openHashTab() && adminUser) loadReports();
+  window.onhashchange = openHashTab;
   loadCourses().then(courses => {
     if (courses.length && !currentCourse) $("course-list").children[0].click();
   });

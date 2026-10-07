@@ -1264,6 +1264,8 @@ def _people(conn) -> list[dict]:
     )
     names: dict[str, Counter] = defaultdict(Counter)
     counts: dict[str, Counter] = defaultdict(Counter)
+    owned: dict[str, list[int]] = defaultdict(list)
+    joined: dict[str, list[int]] = defaultdict(list)
     for table, name_column in (
         ("courses", "created_by"),
         ("runs", "driver"),
@@ -1275,8 +1277,12 @@ def _people(conn) -> list[dict]:
             counts[table][row["owner_id"]] += 1
             if row["name"]:
                 names[row["owner_id"]][row["name"]] += 1
-    for row in conn.execute("SELECT device_id FROM course_members"):
-        counts["course_members"][row["device_id"]] += 1
+    for row in conn.execute(
+        "SELECT id, owner_id FROM courses WHERE owner_id IS NOT NULL"
+    ):
+        owned[row["owner_id"]].append(row["id"])
+    for row in conn.execute("SELECT course_id, device_id FROM course_members"):
+        joined[row["device_id"]].append(row["course_id"])
     bans = {
         row["device_id"]: row["id"]
         for row in conn.execute("SELECT id, device_id FROM bans")
@@ -1292,7 +1298,9 @@ def _people(conn) -> list[dict]:
             "courses": counts["courses"][owner],
             "runs": counts["runs"][owner],
             "acceleration": counts["acceleration_entries"][owner],
-            "joined": counts["course_members"][owner],
+            "joined": len(joined[owner]),
+            "owned_course_ids": owned[owner],
+            "joined_course_ids": joined[owner],
             "banned": owner in bans,
             "ban_id": bans.get(owner),
         }

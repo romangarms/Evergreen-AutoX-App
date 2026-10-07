@@ -307,6 +307,14 @@ def test_admin_adds_and_removes_board_members(client, sign_in):
     assert seen["is_member"] is True
     assert seen["join_code"] == board["join_code"]
     assert post_run(client, member, board["id"]).status_code == 200
+    assert person(client, "user", "Mia Member")["joined_course_ids"] == [board["id"]]
+    owner_row = next(
+        p
+        for p in client.get("/api/admin/users", auth=ADMIN).json()
+        if p["owned_course_ids"]
+    )
+    assert owner_row["owned_course_ids"] == [board["id"]]
+    assert owner_row["joined_course_ids"] == []
 
     bare = person(client, "device")
     added = client.post(
