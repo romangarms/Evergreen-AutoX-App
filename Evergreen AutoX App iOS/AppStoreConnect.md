@@ -28,7 +28,7 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 > organizer publishes it.
 
 **Feedback Email:** romangarms@gmail.com
-**Marketing URL:** https://autox.romangarms.com/support
+**Marketing URL:** https://autox.romangarms.com/app
 **Privacy Policy URL:** https://autox.romangarms.com/privacy
 
 **What to Test** (per build; edit for each upload)
@@ -146,7 +146,7 @@ Do not add organizer or product names (Evergreen, Speedhive, MYLAPS, SCCA, Track
 trademarked terms there are a common metadata rejection.
 
 **Support URL:** https://autox.romangarms.com/support
-**Marketing URL:** leave empty, or the support URL
+**Marketing URL:** https://autox.romangarms.com/app
 **Privacy Policy URL:** https://autox.romangarms.com/privacy
 **Copyright:** 2026 Roman Garms
 

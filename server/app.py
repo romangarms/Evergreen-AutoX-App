@@ -1720,6 +1720,11 @@ def index():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/app", include_in_schema=False)
+def landing():
+    return FileResponse(STATIC_DIR / "app.html")
+
+
 @app.get("/privacy", include_in_schema=False)
 def privacy():
     return FileResponse(STATIC_DIR / "privacy.html")
