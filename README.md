@@ -6,20 +6,21 @@ Autocross timing and results in your pocket, built around the autocross events a
 
 | Live timing | Friends | Head-to-head |
 | :---: | :---: | :---: |
-| ![Live timing](screenshots/Live%20Events.png) | ![Friends](screenshots/Friends.png) | ![Head-to-head compare](screenshots/Compare.png) |
+| ![Live timing](screenshots/appstore-6.9/1%20Live.png) | ![Friends](screenshots/appstore-6.9/3%20Friends.png) | ![Head-to-head compare](screenshots/appstore-6.9/4%20Compare.png) |
 
-| Events | Settings |
-| :---: | :---: |
-| ![Event browser](screenshots/Events.png) | ![Settings](screenshots/Settings.png) |
+| Events | Leaderboard | Leaderboard driver |
+| :---: | :---: | :---: |
+| ![Event browser](screenshots/appstore-6.9/7%20Events.png) | ![Community leaderboard](screenshots/appstore-6.9/5%20Leaderboard.png) | ![A driver's runs on a leaderboard](screenshots/appstore-6.9/6%20Leaderboard%20Driver.png) |
 
 ## The app
 
-Four tabs:
+Five tabs:
 
 - **Live** — the leaderboard for the selected session: position, car number, best time, and run count for every entry. Your own car gets a **ME** tag and highlight, and you can star cars to keep an eye on them. Pull to refresh.
-- **Friends** — pin the cars you care about, see everyone's gap to your best time, and pick any two for a head-to-head: best/average/spread stats, a times-over-the-day chart, and a run-by-run gap breakdown.
-- **Events** — browse and search an organization's events, then drill into sessions and individual drivers. The **Leaderboards** section holds community leaderboards: anyone can create one from the app, post times to any board from a TrackAddict CSV export (the time and top speed come from the log, not from typing), and report or hide a board or run. Creators can edit and delete their own boards and any run on them.
-- **Setup** — set the name you post under, mark which car is you (drives the ME tag and the gaps on the Friends tab), give cars nicknames, find the support and privacy links, and turn on dev mode (tap the version line seven times to reveal it), which unlocks pointing the app at your own server and switching Speedhive organizations (Events → ⋯ menu).
+- **Friends** — the cars you starred, with everyone's gap to your best time. Mark which car is you and give cars nicknames from a driver's ••• menu, and pick any two for a head-to-head: best/average/spread stats, a times-over-the-day chart, and a run-by-run gap breakdown.
+- **Events** — browse and search events from Speedhive and GGLC, then drill into sessions and individual drivers.
+- **Boards** — community leaderboards. Anyone can browse them; creating one or posting a time needs Sign in with Apple, so your boards and times follow you to a new phone. Times are posted from a TrackAddict CSV export (the time and top speed come from the log, not from typing). A board can be unlisted, which keeps it out of the list until someone adds it with the join code its creator shares. The **Acceleration** board at the top ranks 0-60, 0-30 and drag strip times, posted from a TrackAddict drag-mode log. Any board or entry can be reported or hidden, and a poster can be blocked. Creators can edit and delete their own boards and any run on them.
+- **Setup** — sign in or out, change your username, delete your account, manage blocked posters, and find the support and privacy links. Tapping the version line seven times reveals dev mode, which unlocks pointing the app at your own server and switching Speedhive organizations (Events → ⋯ menu).
 
 ## Running the server
 
@@ -39,30 +40,40 @@ The public server is https://autox.romangarms.com, which is what the app uses by
 
 The server binds to `0.0.0.0` on purpose: when developing, set the app's server URL (Setup tab) to your Mac's LAN IP so your iPhone can reach it.
 
-Open http://localhost:8321/ for a bare-bones dev console: a leaderboard editor, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser. Without an admin login it is read-only: the editing controls, the Reports queue, and the TrackAddict importer only appear after signing in with the credentials from `.env`, and hidden boards and runs are never listed.
+The site root is the public landing page with the TestFlight link; `/support` and `/privacy` are the pages the app links to.
+
+Open http://localhost:8321/dev for a bare-bones dev console: a leaderboard editor, the acceleration board, a Speedhive browser (enter an org ID, the number in the org's URL on speedhive.mylaps.com, then click through events → sessions → drivers), and a GGLC results browser. Without an admin login it is read-only: the editing controls, the TrackAddict importer, and the Moderation tab (reports, bans, and the list of users and their devices) only appear after signing in with the credentials from `.env`, and hidden boards and runs are never listed.
 
 ### Leaderboard auth
 
-Reading the leaderboard is public. Writes accept two kinds of caller:
+Reading the leaderboards is public, except for unlisted boards (below). Writes accept these callers:
 
-- **Device token** (`Authorization: Bearer <token>`): the app mints a random token on first launch and keeps it in the Keychain. A token owns the courses and runs it created and can edit or delete those, plus any run on a course it owns. Each token can create at most 20 courses.
-- **Admin** (HTTP Basic auth with the credentials from `.env`): can edit or delete anything, is the only one who can read or dismiss reports, and can hide a course or a run (the dev console's "hidden" checkboxes). Hidden rows stay in the database but no longer exist for anyone else, their owner included. Courses and runs created by the admin have no owner, so only the admin can change them.
+- **Device token** (`Authorization: Bearer <token>`): the app mints a random token on first launch and keeps it in the Keychain. A token owns what it created and can edit or delete that, plus any run on a course it owns.
+- **Account**: once a device signs in with Apple, everything it posted moves to the account, and every device signed in to that account acts as the same owner. Creating a course or posting a run or acceleration entry needs an account; editing does not. An account can own at most 20 courses and 20 acceleration entries. Text a device posts goes through a profanity filter.
+- **Admin** (HTTP Basic auth with the credentials from `.env`, or the dev console's session cookie): can edit or delete anything, is the only one who can read or dismiss reports, ban a poster, and hide a course or a run (the dev console's "hidden" checkboxes). Hidden rows stay in the database but no longer exist for anyone else, their owner included. Courses and runs created by the admin have no owner until the admin assigns one.
 
-Admin credentials:
+An **unlisted** board exists only for its owner, the devices that joined it with its join code, and the admin. Everyone else, requests with no credentials included, gets a 404 and never sees it in the list. The website reads unlisted boards with a separate read-only key (`X-Leaderboard-Key`); that key ships in a public bundle, so it never returns a join code and cannot write.
+
+Settings in `.env`:
 
 | Variable | Meaning |
 | --- | --- |
-| `LEADERBOARD_ADMIN_USER` | Username, defaults to `admin` |
-| `LEADERBOARD_ADMIN_PASSWORD` | Required; with it unset every write endpoint returns 503 |
+| `LEADERBOARD_ADMIN_USER` | Admin username, defaults to `admin` |
+| `LEADERBOARD_ADMIN_PASSWORD` | Required; with it unset, admin Basic auth returns 503 |
+| `LEADERBOARD_READ_KEY` | The website's read key; `./start.sh` generates one if it is missing |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Optional Sign in with Apple key, so deleting an account also revokes its Apple sign-in |
 
 To change them:
 
 ```bash
-./start.sh set-password
-./start.sh             # restart so the server picks them up
+./start.sh set-password            # admin username and password
+./start.sh read-key                # print the website's read key
+./start.sh new-read-key            # replace it; rebuild the website with the new one
+./start.sh apple-key AuthKey_XXXXXXXXXX.p8
+./start.sh                         # restart so the server picks them up
 ```
 
-The dev console asks for the login in a dialog on the first edit (or via the Sign in button in the header) and keeps it for the browser session. From the command line, use `curl -u admin:PASSWORD`.
+The dev console's Sign in button posts the login once and gets back a 30-day HttpOnly cookie; the page never stores the password, and changing the password signs every browser out. From the command line, use `curl -u admin:PASSWORD`.
 
 `./start.sh help` lists all commands.
 
@@ -83,58 +94,14 @@ Restoring keeps the DB it replaced next to it as `server/leaderboard.pre-restore
 
 ## API endpoints
 
-Speedhive-backed:
+Listed in [API.md](API.md).
 
-- `GET /api/orgs/{org_id}` — org info
-- `GET /api/orgs/{org_id}/events?limit=&offset=` — events
-- `GET /api/events/{event_id}/sessions` — sessions for an event
-- `GET /api/sessions/{session_id}/results` — raw classification
-- `GET /api/sessions/{session_id}/laps` — raw laps (grouped per finish position)
-- `GET /api/sessions/{session_id}/drivers` — distilled driver list
-- `GET /api/sessions/{session_id}/drivers/{position}` — one driver's raw result + laps
+`server/import_sheet.py` seeds the leaderboards from spreadsheet snapshots embedded in the script (the HWY 9 Leaderboard sheet, the WA Cannonball and Disco sheets, and the acceleration sheet) and is safe to re-run.
 
-GGLC (scraped from gglotus.org result pages):
+## Tests and lint
 
-- `GET /api/gglc/events` — list of GGLC autocross events that have results (GGLC sometimes publishes title-only pages; those are skipped unless the event is today)
-- `GET /api/gglc/events/{event_date}` — full results for one event (`YYYY-MM-DD` or `YYYYMMDD`)
-
-Community leaderboard (SQLite in `server/leaderboard.db`; writes need a device token or admin login, see [Leaderboard auth](#leaderboard-auth)). Responses carry `is_owner` for the caller and never expose owner tokens:
-
-- `GET /api/leaderboard/courses` — courses
-- `POST /api/leaderboard/courses` — create a course (`name`, optional `distance_miles`, `legacy_distance_miles`, `description`, `created_by`)
-- `GET /api/leaderboard/courses/{course_id}` — course plus its runs sorted by adjusted time
-- `PATCH` / `DELETE /api/leaderboard/courses/{course_id}` — edit or delete a course (owner or admin; deleting removes its runs)
-- `PUT /api/leaderboard/courses/{course_id}/owner` — admin only: hand a course to someone from the users list (`person`: `{kind, id}`) or to a device (`device_token`); neither means no owner
-- `GET` / `POST /api/leaderboard/courses/{course_id}/members` and `DELETE …/members/{kind}/{id}` — admin only: list, add (`kind` of `user`/`device`, `id`) or remove the people an unlisted course exists for, without their needing the join code
-- `PUT /api/leaderboard/courses/{course_id}/hidden` and `PUT /api/leaderboard/runs/{run_id}/hidden` — admin only: hide or unhide (`hidden`: `true`/`false`); hidden rows are omitted from every non-admin response and 404 for non-admin writes
-- `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`)
-- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
-- `POST /api/leaderboard/reports` — flag a course, run, or acceleration entry (`target_type` of `course`/`run`/`acceleration`, `target_id`, `reason`)
-- `GET` / `DELETE /api/leaderboard/reports[/{report_id}]` — admin: list reports with their targets, or dismiss one
-
-Accounts and users (a device is named by its row id and an account by its user id; tokens and Apple identifiers never appear):
-
-- `POST /api/account/apple` — sign this device in (`identity_token`, the `nonce` whose SHA-256 the app gave Apple, optional `authorization_code` and `name`)
-- `GET` / `PATCH` / `DELETE /api/account` — whether this device is signed in, change the account's `name`, or delete the account and everything it posted
-- `DELETE /api/account/session` — sign this device out
-- `POST /api/account/apple/notifications` — Apple's server-to-server endpoint (`payload`, a token Apple signs); a revoked or deleted Apple ID is signed out on every device
-- `GET /api/admin/users` — admin: every account with its devices, and every device that has not signed in, with what each has posted and whether it is banned
-- `PATCH /api/admin/users/{user_id}` and `PATCH /api/admin/devices/{device_id}` — admin: set a `label`
-- `POST /api/admin/bans` — admin: ban someone from the users list (`kind`, `id`, optional `reason`); lift it with `DELETE /api/leaderboard/bans/{ban_id}`
-- `POST /api/admin/devices/{device_id}/move` — admin: file everything a signed-out device posted under an account (`user_id`)
-
-Legacy runs were set on the old, longer course; their adjusted time is scaled by `distance_miles / legacy_distance_miles`. Average speed is computed from the course distance.
-
-TrackAddict:
-
-- `POST /api/trackaddict/parse` — body is a raw TrackAddict CSV log; returns its laps with times and distances. A lap that starts from a standstill (a drag-mode run) also carries `acceleration`: 0-30 and 0-60 interpolated from the GPS speed trace, plus the 1/8 and 1/4 mile times and trap speeds from the log's 200 m and 400 m sector markers
-
-Acceleration board:
-
-- `GET /api/acceleration` — every entry, ranked by 0-60 then 0-30
-- `POST /api/acceleration` — add an entry (signed-in device or admin; a device needs at least one time and is limited to 20 entries)
-- `PATCH` / `DELETE /api/acceleration/{entry_id}` — the poster or admin; only the admin can set `hidden`
-
-`server/import_sheet.py` seeds the leaderboard from the HWY 9 Leaderboard spreadsheet snapshot embedded in the script and is safe to re-run.
-
-Laps in the Speedhive API are keyed only by finish position within a session, so drivers are addressed by `position`.
+```bash
+./.venv/bin/python -m pytest
+./.venv/bin/ruff check .
+./.venv/bin/ruff format .
+```
