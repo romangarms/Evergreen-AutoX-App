@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var nav = NavTracker()
     @State private var showOrgPrompt = false
     @State private var orgIDText = ""
@@ -19,6 +20,21 @@ struct RootView: View {
         // are already too small to shrink.
         .dynamicTypeSize(.large ... .xxxLarge)
         .modifier(AppleCredentialWatcher())
+        .task(id: scenePhase == .active && model.wantsLiveRefresh) {
+            guard scenePhase == .active, model.wantsLiveRefresh else { return }
+            while !Task.isCancelled {
+                // Counted from the last load of any kind, so coming back to
+                // the app reloads at once and a manual reload restarts the wait.
+                let wait = model.lastSessionLoad
+                    .addingTimeInterval(AppModel.liveRefreshInterval)
+                    .timeIntervalSinceNow
+                if wait > 0 {
+                    try? await Task.sleep(for: .seconds(wait))
+                } else {
+                    await model.refreshSessionData()
+                }
+            }
+        }
         .alert("Speedhive Organization", isPresented: $showOrgPrompt) {
             TextField("\(AppModel.defaultOrgID)", text: $orgIDText)
                 .keyboardType(.numberPad)
@@ -345,6 +361,17 @@ struct RootView: View {
 private struct NavRoute: Hashable {
     let tab: AppModel.Tab
     let screen: AppModel.Screen?
+
+    // A refresh can move the driver on screen to another position; that is
+    // the same page, not a navigation, so positions stay out of the identity.
+    init(tab: AppModel.Tab, screen: AppModel.Screen?) {
+        self.tab = tab
+        self.screen = switch screen {
+        case .driver: .driver(0)
+        case .compare: .compare(0, 0)
+        default: screen
+        }
+    }
 
     var depth: Int {
         switch screen {

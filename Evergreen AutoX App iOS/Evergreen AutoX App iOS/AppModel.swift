@@ -92,6 +92,9 @@ final class AppModel {
     var isLoading = false
     var errorMessage: String?
 
+    static let liveRefreshInterval: TimeInterval = 10
+    @ObservationIgnored private(set) var lastSessionLoad = Date.distantPast
+
     var compareSelection: [String] = []
     var isRenaming = false
     var renameText = ""
@@ -292,6 +295,24 @@ final class AppModel {
         return date.formatted(.dateTime.month(.wide).year())
     }
     var selectedSession: SHSession? { sessions.first { $0.id == selectedSessionID } }
+
+    // Only an event from today or yesterday can still be producing times, and
+    // only these pages show them.
+    var wantsLiveRefresh: Bool {
+        guard let event = selectedEvent, event.source != .leaderboard,
+              let start = event.startDate,
+              let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now)
+        else { return false }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard start.prefix(10) >= formatter.string(from: yesterday) else { return false }
+        return switch screen {
+        case nil: tab == .live || tab == .friends
+        case .driver, .compare: true
+        default: false
+        }
+    }
     var me: Driver? { meNumber.flatMap(driver(number:)) }
 
     // Car numbers are per event, so the prompt comes back for each new event
@@ -871,27 +892,68 @@ final class AppModel {
         guard let sessionID = selectedSessionID else { return }
         isLoading = true
         errorMessage = nil
+        lastSessionLoad = .now
         do {
-            let loaded: [Driver]
-            if sessionID < 0 {
-                let event = try await client.gglcEvent(date: Self.gglcDate(eventID: sessionID))
-                loaded = Self.gglcDrivers(event)
-            } else {
-                async let resultsTask = client.results(sessionID: sessionID)
-                async let lapsTask = client.laps(sessionID: sessionID)
-                let (results, lapsRows) = try await (resultsTask, lapsTask)
-                let lapsByPosition = Dictionary(lapsRows.compactMap { row in row.position.map { ($0, row.laps ?? []) } }) { first, _ in first }
-                loaded = results
-                    .map { Driver(result: $0, laps: lapsByPosition[$0.position ?? -1] ?? []) }
-                    .sorted { $0.position < $1.position }
-            }
+            let loaded = try await fetchDrivers(sessionID: sessionID)
             guard selectedSessionID == sessionID else { return }
-            drivers = loaded
+            show(loaded)
         } catch {
             guard selectedSessionID == sessionID else { return }
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    // The automatic reload: no spinner, and a failure leaves the last results
+    // up rather than replacing a live board with an error every few seconds.
+    func refreshSessionData() async {
+        lastSessionLoad = .now
+        guard let sessionID = selectedSessionID, !isLoading else { return }
+        // Speedhive adds sessions through the day; GGLC has only the one.
+        if let eventID = selectedEventID, eventID > 0,
+           let fetched = try? await client.sessions(eventID: eventID),
+           selectedEventID == eventID, fetched != sessions {
+            sessions = fetched
+        }
+        guard let loaded = try? await fetchDrivers(sessionID: sessionID),
+              selectedSessionID == sessionID
+        else { return }
+        show(loaded)
+        errorMessage = nil
+    }
+
+    private func fetchDrivers(sessionID: Int) async throws -> [Driver] {
+        if sessionID < 0 {
+            let event = try await client.gglcEvent(date: Self.gglcDate(eventID: sessionID))
+            return Self.gglcDrivers(event)
+        }
+        async let resultsTask = client.results(sessionID: sessionID)
+        async let lapsTask = client.laps(sessionID: sessionID)
+        let (results, lapsRows) = try await (resultsTask, lapsTask)
+        let lapsByPosition = Dictionary(lapsRows.compactMap { row in row.position.map { ($0, row.laps ?? []) } }) { first, _ in first }
+        return results
+            .map { Driver(result: $0, laps: lapsByPosition[$0.position ?? -1] ?? []) }
+            .sorted { $0.position < $1.position }
+    }
+
+    // Screens name a driver by position, which a new time can change while
+    // the page is open, so an open page follows its driver's car number.
+    private func show(_ loaded: [Driver]) {
+        func moved(_ position: Int) -> Int {
+            guard let number = driver(at: position)?.startNumber else { return position }
+            return loaded.first { $0.startNumber == number }?.position ?? position
+        }
+        func following(_ screen: Screen?) -> Screen? {
+            switch screen {
+            case .driver(let position): .driver(moved(position))
+            case .compare(let a, let b): .compare(moved(a), moved(b))
+            default: screen
+            }
+        }
+        let (newScreen, newFriendsScreen) = (following(screen), following(friendsScreen))
+        if newScreen != screen { screen = newScreen }
+        friendsScreen = newFriendsScreen
+        drivers = loaded
     }
 
     func pickSession(_ sessionID: Int) {

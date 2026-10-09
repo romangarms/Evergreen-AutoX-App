@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import apple
+import cache
 import db
 import gglc
 import moderation
@@ -311,7 +312,13 @@ def delete_admin_session(response: Response):
     return {"user": None}
 
 
-def _raw_laps(session_id: int) -> list:
+# Everyone watching an event polls these, so each upstream page is fetched at
+# most once per TTL however many phones ask.
+LIVE_TTL = 10
+LIST_TTL = 60
+
+
+def _fetch_laps(session_id: int) -> list:
     response = get_all_lap_times.sync_detailed(id=session_id, client=client.client)
     result = SpeedhiveClient._parse_response(response)
     if isinstance(result, dict):
@@ -319,9 +326,21 @@ def _raw_laps(session_id: int) -> list:
     return result if isinstance(result, list) else []
 
 
+def _raw_laps(session_id: int) -> list:
+    return cache.cached(("laps", session_id), LIVE_TTL, lambda: _fetch_laps(session_id))
+
+
+def _results(session_id: int) -> list:
+    return cache.cached(
+        ("results", session_id), LIVE_TTL, lambda: client.get_results(session_id)
+    )
+
+
 @app.get("/api/orgs/{org_id}")
 def get_org(org_id: int):
-    org = client.get_organization(org_id)
+    org = cache.cached(
+        ("org", org_id), LIST_TTL, lambda: client.get_organization(org_id)
+    )
     if org is None:
         raise HTTPException(status_code=404, detail=f"Organization {org_id} not found")
     return org
@@ -329,17 +348,23 @@ def get_org(org_id: int):
 
 @app.get("/api/orgs/{org_id}/events")
 def get_events(org_id: int, limit: int = 50, offset: int = 0):
-    return client.get_events(org_id, limit=limit, offset=offset)
+    return cache.cached(
+        ("events", org_id, limit, offset),
+        LIST_TTL,
+        lambda: client.get_events(org_id, limit=limit, offset=offset),
+    )
 
 
 @app.get("/api/events/{event_id}/sessions")
 def get_sessions(event_id: int):
-    return client.get_sessions(event_id)
+    return cache.cached(
+        ("sessions", event_id), LIST_TTL, lambda: client.get_sessions(event_id)
+    )
 
 
 @app.get("/api/sessions/{session_id}/results")
 def get_results(session_id: int):
-    return client.get_results(session_id)
+    return _results(session_id)
 
 
 @app.get("/api/sessions/{session_id}/laps")
@@ -350,7 +375,7 @@ def get_laps(session_id: int):
 @app.get("/api/sessions/{session_id}/drivers")
 def get_drivers(session_id: int):
     drivers = []
-    for row in client.get_results(session_id):
+    for row in _results(session_id):
         if not isinstance(row, dict):
             continue
         drivers.append(
@@ -369,7 +394,7 @@ def get_driver(session_id: int, position: int):
     result_row = next(
         (
             row
-            for row in client.get_results(session_id)
+            for row in _results(session_id)
             if isinstance(row, dict) and row.get("position") == position
         ),
         None,
@@ -390,7 +415,8 @@ def get_driver(session_id: int, position: int):
 
 @app.get("/api/gglc/events")
 def gglc_events(year: int | None = None):
-    return gglc.list_events(year or gglc.today().year)
+    year = year or gglc.today().year
+    return cache.cached(("gglc-events", year), LIST_TTL, lambda: gglc.list_events(year))
 
 
 @app.get("/api/gglc/events/{event_date}")
@@ -399,7 +425,7 @@ def gglc_event(event_date: str):
         day = gglc.parse_date(event_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    event = gglc.fetch_event(day)
+    event = cache.cached(("gglc-event", day), LIVE_TTL, lambda: gglc.fetch_event(day))
     if event is None:
         raise HTTPException(
             status_code=404, detail=f"No GGLC results for {day.isoformat()}"

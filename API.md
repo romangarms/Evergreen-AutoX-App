@@ -14,6 +14,8 @@ Everything the server in `server/app.py` answers. Reads are public unless noted;
 
 Laps in the Speedhive API are keyed only by finish position within a session, so drivers are addressed by `position`.
 
+Every Speedhive and GGLC answer is cached in memory (`server/cache.py`): results, laps and a GGLC event for 10 seconds, the org, event and session lists for 60. The app reloads an open event every 10 seconds, so upstream sees one request per page per window however many phones are watching.
+
 ## GGLC
 
 Scraped from gglotus.org result pages.
