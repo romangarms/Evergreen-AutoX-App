@@ -41,8 +41,10 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 >   head-to-head compare.
 > - Posting now needs Sign in with Apple. Sign in from Setup or the first time you post, pick a username if
 >   asked, and check your posts are still yours after deleting and reinstalling the app.
-> - Boards tab: create a leaderboard or JOIN one with a code, post a time (typed in, or imported
->   from a TrackAddict CSV), then delete it.
+> - Boards tab: create a leaderboard or JOIN one with a code, post a time from a TrackAddict CSV, then
+>   delete it.
+> - No log? On the Post a Time sheet tap NO LOG? USE A PHOTO, type the time and pick one photo as proof.
+>   It should show as WAITING FOR REVIEW, only to you, until we approve it. Try withdrawing one too.
 > - Boards tab → Acceleration: if you have a TrackAddict drag-run log, post it with POST A TIME and check the
 >   0-60 and quarter-mile numbers against what TrackAddict showed.
 > - Turn the system text size up (Settings → Display & Brightness → Text Size) and check nothing is cut off.
@@ -65,6 +67,11 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 > "Community" section holds the user-created leaderboards. The Acceleration board at the top of that
 > section ranks 0-60 and quarter-mile times; users post to it by importing a drag-run log recorded with
 > the TrackAddict app, and it carries a notice that times are from drag strips and closed courses.
+>
+> Without a log, a time can be typed in with one photo as proof ("NO LOG? USE A PHOTO" on the Post a
+> Time sheet), chosen with the system photo picker. That time is not published: it waits, with its
+> photo, for us to approve it, and shows on the board only to its poster as "WAITING FOR REVIEW". The
+> photo is never shown to other users and is deleted once reviewed.
 >
 > A leaderboard's creator can mark it Unlisted (for a club or a group of friends). Unlisted leaderboards
 > are not shown in the list; people add one by tapping JOIN in the Community section and entering the
@@ -161,9 +168,13 @@ Data is collected (the server stores posts, the device token, and the Apple sign
 | Identifiers → Device ID (the random app-generated token) | Yes | Yes | No | App Functionality |
 | Identifiers → User ID (Apple's identifier for the signed-in Apple ID) | Yes | Yes | No | App Functionality |
 | Contact Info → Email Address (from Sign in with Apple; may be a relay address) | Yes | Yes | No | App Functionality |
+| User Content → Photos or Videos (the proof photo sent with a hand-typed time) | Yes | Yes | No | App Functionality |
 
 Everything else: not collected. The TrackAddict CSV is parsed in memory and not stored, so its GPS data
-does not count as collected location.
+does not count as collected location. The proof photo is stored only until it is reviewed, but Apple
+counts anything kept longer than it takes to answer the request as collected, so it is declared. The
+app redraws the photo before upload, which drops its location metadata, and it uses the system photo
+picker, so there is no photo-library permission prompt or usage string.
 
 ### Age rating
 

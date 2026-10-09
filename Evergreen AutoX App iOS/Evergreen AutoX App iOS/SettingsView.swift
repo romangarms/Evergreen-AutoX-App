@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var copiedDeviceID = false
     @State private var versionTaps = 0
     @State private var blockError: String?
+    @State private var adminDashboard: AdminDashboardLink?
 
     private static let supportURL = URL(string: "\(AppModel.defaultBaseURL)/support")!
     private static let privacyURL = URL(string: "\(AppModel.defaultBaseURL)/privacy")!
@@ -94,6 +95,10 @@ struct SettingsView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .fullScreenCover(item: $adminDashboard) { link in
+            AdminDashboardView(link: link)
+                .ignoresSafeArea()
+        }
         .task {
             await model.loadAccount()
             await model.loadBlocks()
@@ -145,6 +150,15 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(EGButtonStyle())
+                Text("The admin dashboard opens the server's dev console on Submissions, where manual times wait for approval. It asks for the server's admin sign-in and stays signed in for 30 days.")
+                    .egFont(11)
+                    .foregroundStyle(Color.egGrayDark)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("ADMIN DASHBOARD") {
+                    adminDashboard = AdminDashboardLink(baseURLString: model.baseURLString)
+                }
+                .buttonStyle(EGButtonStyle())
+                .disabled(AdminDashboardLink(baseURLString: model.baseURLString) == nil)
             }
             Button("HIDE DEV MODE") {
                 let wasOn = model.devMode

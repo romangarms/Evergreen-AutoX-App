@@ -70,6 +70,8 @@ struct LeaderboardView: View {
                         actions(course)
                     }
 
+                    SubmissionsBox(courseID: courseID)
+
                     if let notice {
                         Text(notice)
                             .egFont(11, weight: .semibold)
@@ -128,6 +130,7 @@ struct LeaderboardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .task { await model.loadSubmissions() }
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .newRun(let course):

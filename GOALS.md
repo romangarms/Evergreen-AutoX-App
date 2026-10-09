@@ -6,7 +6,7 @@ were not on the original wishlist and are up for debate.
 
 ## Where things stand (Oct 2026)
 
-- **App** (iOS 18+, TestFlight 1.4): Live / Friends / Events / Boards / Setup tabs. Events come from
+- **App** (iOS 18+, TestFlight 1.5): Live / Friends / Events / Boards / Setup tabs. Events come from
   Speedhive and GGLC. Pins, nicknames, and the ME car are stored per event in `UserDefaults` on the device
   only. Data refreshes on pull-to-refresh; there is no background polling. Community leaderboards live in
   the Boards tab: browsing is open, creating a board or posting needs Sign in with Apple, times come from

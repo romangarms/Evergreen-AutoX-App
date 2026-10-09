@@ -1,8 +1,16 @@
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "leaderboard.db"
+
+
+# Proof photos sit beside the database rather than in it, so they stay out of
+# the hourly database snapshots.
+def proof_dir() -> Path:
+    return DB_PATH.parent / "proofs"
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS courses (
@@ -102,6 +110,19 @@ CREATE TABLE IF NOT EXISTS acceleration_entries (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     hidden INTEGER NOT NULL DEFAULT 0,
     owner_id TEXT
+);
+CREATE TABLE IF NOT EXISTS submissions (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+    payload TEXT NOT NULL,
+    proof_file TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    review_note TEXT,
+    result_id INTEGER,
+    owner_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    reviewed_at TEXT
 );
 """
 
@@ -235,6 +256,47 @@ def acceleration_to_dict(entry: sqlite3.Row, viewer_id: str | None = None) -> di
     out["is_owner"] = owner is not None and owner == viewer_id
     out["hidden"] = bool(out["hidden"])
     return out
+
+
+def _number(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+# `summary` is the one line both the app and the dev console show for a
+# submission, so neither has to know every field of both kinds.
+def submission_to_dict(row: sqlite3.Row, course_name: str | None = None) -> dict:
+    fields = json.loads(row["payload"])
+    if row["kind"] == "run":
+        parts = [format_time(fields["time_seconds"]), fields["driver"]]
+        parts.append(fields.get("vehicle"))
+    else:
+        times = (
+            ("0-60", "zero_to_60_seconds"),
+            ("0-30", "zero_to_30_seconds"),
+            ("1/4 mi", "quarter_mile_seconds"),
+            ("1/8 mi", "eighth_mile_seconds"),
+        )
+        parts = [
+            f"{label} {_number(fields[key])}s"
+            for label, key in times
+            if fields.get(key) is not None
+        ]
+        year = fields.get("year")
+        parts.append(f"{year} {fields['vehicle']}" if year else fields["vehicle"])
+    return {
+        "id": row["id"],
+        "kind": row["kind"],
+        "course_id": row["course_id"],
+        "course_name": course_name,
+        "status": row["status"],
+        "review_note": row["review_note"],
+        "result_id": row["result_id"],
+        "created_at": row["created_at"],
+        "reviewed_at": row["reviewed_at"],
+        "has_proof": row["proof_file"] is not None,
+        "summary": " · ".join(part for part in parts if part),
+        "fields": fields,
+    }
 
 
 # Ranked by 0-60, then 0-30, with entries missing a time after those that have it.

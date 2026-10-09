@@ -276,6 +276,36 @@ struct AppleSignInInput: Encodable {
     }
 }
 
+struct SubmissionInput: Encodable {
+    var courseID: Int?
+    var run: LBRunInput?
+    var acceleration: AccelEntryInput?
+    var proof: String
+
+    enum CodingKeys: String, CodingKey {
+        case run, acceleration, proof
+        case courseID = "course_id"
+    }
+}
+
+struct Submission: Decodable, Identifiable {
+    let id: Int
+    let kind: String
+    let courseID: Int?
+    let status: String
+    let reviewNote: String?
+    let summary: String
+
+    var isRun: Bool { kind == "run" }
+    var rejected: Bool { status == "rejected" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, status, summary
+        case courseID = "course_id"
+        case reviewNote = "review_note"
+    }
+}
+
 struct AccountNameInput: Encodable {
     let name: String
 }

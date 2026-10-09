@@ -20,6 +20,8 @@ struct AccelerationView: View {
                         showForm = true
                     }
                     .buttonStyle(EGButtonStyle(kind: .primary))
+
+                    SubmissionsBox(courseID: nil)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -68,6 +70,7 @@ struct AccelerationView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .task { await model.loadSubmissions() }
         .sheet(isPresented: $showForm) {
             GuidelinesGate { AccelFormView() }
         }
@@ -494,42 +497,113 @@ struct AccelFormView: View {
     @State private var imported = false
     @State private var pulls: [TALap] = []
     @State private var selectedLap: Int?
+    @State private var manual = false
+    @State private var manualTimes = Array(repeating: "", count: 6)
+    @State private var proof: Data?
     @State private var error: String?
     @State private var saving = false
 
+    private var showsDetails: Bool { manual || selectedLap != nil }
+
     var body: some View {
         EGSheetFrame(title: "Post a Time", subtitle: "Acceleration") {
-            importBox
-            if selectedLap != nil {
+            if manual {
+                ProofPhotoBox(proof: $proof)
+            } else {
+                importBox
+            }
+            ProofModeButton(manual: $manual)
+            if manual {
+                manualTimeFields
+            }
+            if showsDetails {
                 EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
                 HStack(spacing: 10) {
-                    EGFormField(label: "YEAR (OPTIONAL)", placeholder: "2007", text: $year, keyboard: .numberPad)
+                    EGFormField(label: "YEAR", placeholder: "2007", text: $year, keyboard: .numberPad)
                         .egWidth(110)
                     EGFormField(label: "VEHICLE", placeholder: "BMW Z4M", text: $vehicle)
                 }
                 HStack(spacing: 10) {
-                    EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
+                    EGFormField(label: "HP", placeholder: "330", text: $hp, keyboard: .numberPad)
                     EGFormField(label: "WEIGHT LB (OPTIONAL)", placeholder: "3200", text: $weight, keyboard: .numberPad)
                 }
                 EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, surface, anything worth knowing", text: $notes, capitalization: .sentences)
             }
             EGErrorText(text: error)
-            if selectedLap != nil {
-                Button("POST TIME") {
+            if showsDetails {
+                Button(manual ? "SUBMIT FOR REVIEW" : "POST TIME") {
                     Task { await save() }
                 }
                 .buttonStyle(EGButtonStyle(kind: .primary))
                 .disabled(saving)
+                if manual { ProofReviewNote() }
             }
         }
         .onAppear {
             if driver.isEmpty { driver = model.posterName }
         }
+        .onChange(of: manual) { error = nil }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text, .data]) { result in
             if case .success(let url) = result {
                 Task { await importLog(url) }
             }
         }
+    }
+
+    // In the order of TAAcceleration's fields, which is how save() reads them.
+    private static let manualTimeLabels = [
+        ("0–30 (S)", "2.1"), ("0–60 (S)", "5.2"),
+        ("¼ MILE (S)", "13.6"), ("¼ MILE (MPH)", "104"),
+        ("⅛ MILE (S)", "8.8"), ("⅛ MILE (MPH)", "82"),
+    ]
+
+    private var manualTimeFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach([0, 2, 4], id: \.self) { first in
+                HStack(spacing: 10) {
+                    ForEach([first, first + 1], id: \.self) { index in
+                        EGFormField(
+                            label: Self.manualTimeLabels[index].0,
+                            placeholder: Self.manualTimeLabels[index].1,
+                            text: $manualTimes[index],
+                            keyboard: .decimalPad
+                        )
+                    }
+                }
+            }
+            Text("Fill in the times the photo shows. At least one is needed.")
+                .egFont(10.5)
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func manualAcceleration() -> TAAcceleration? {
+        var values: [Double?] = []
+        for (index, text) in manualTimes.enumerated() {
+            let trimmed = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+            if trimmed.isEmpty {
+                values.append(nil)
+            } else if let value = Double(trimmed), value > 0, value <= (index % 2 == 1 && index > 1 ? 400 : 600) {
+                values.append(value)
+            } else {
+                error = "\(Self.manualTimeLabels[index].0.capitalized) is not a valid number."
+                return nil
+            }
+        }
+        guard [values[0], values[1], values[2], values[4]].contains(where: { $0 != nil }) else {
+            error = "Enter at least one time."
+            return nil
+        }
+        guard proof != nil else {
+            error = "Choose a photo that shows these times."
+            return nil
+        }
+        return TAAcceleration(
+            zeroTo30: values[0], zeroTo60: values[1],
+            quarterMileSeconds: values[2], quarterMileMph: values[3],
+            eighthMileSeconds: values[4], eighthMileMph: values[5]
+        )
     }
 
     private var importBox: some View {
@@ -635,15 +709,25 @@ struct AccelFormView: View {
             error = "Enter the vehicle."
             return
         }
-        guard let times = pulls.first(where: { $0.lap == selectedLap })?.acceleration else {
-            error = pulls.isEmpty ? "Import a TrackAddict CSV to post a time." : "Tap the run you want to post."
-            return
+        let times: TAAcceleration
+        if manual {
+            guard let typed = manualAcceleration() else { return }
+            times = typed
+        } else {
+            guard let logged = pulls.first(where: { $0.lap == selectedLap })?.acceleration else {
+                error = pulls.isEmpty ? "Import a TrackAddict CSV to post a time." : "Tap the run you want to post."
+                return
+            }
+            times = logged
         }
         var numbers: [Int?] = []
         for (label, text, range) in [("Year", year, 1880...2100), ("HP", hp, 0...5000), ("Weight", weight, 1...200_000)] {
             let trimmed = text.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty {
+            if trimmed.isEmpty, label == "Weight" {
                 numbers.append(nil)
+            } else if trimmed.isEmpty {
+                error = "Enter the car's \(label == "HP" ? label : label.lowercased())."
+                return
             } else if let value = Int(trimmed), range.contains(value) {
                 numbers.append(value)
             } else {
@@ -664,13 +748,17 @@ struct AccelFormView: View {
             eighthMileSeconds: times.eighthMileSeconds,
             eighthMileMph: times.eighthMileMph,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            source: "trackaddict"
+            source: manual ? "photo" : "trackaddict"
         )
         saving = true
         error = nil
         do {
             model.posterName = driver
-            try await model.addAcceleration(input)
+            if manual, let proof {
+                try await model.submit(SubmissionInput(acceleration: input, proof: proof.base64EncodedString()))
+            } else {
+                try await model.addAcceleration(input)
+            }
             dismiss()
         } catch {
             self.error = error.localizedDescription

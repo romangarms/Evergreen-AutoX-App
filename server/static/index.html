@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AutoX Live — dev console</title>
 <link rel="icon" href="/static/landing/icon.png">
 <style>
@@ -135,6 +136,15 @@
   .cols ul.picklist li { white-space: normal; }
   .cols pre { max-height: 65vh; }
 
+  #sub-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 1rem; margin-top: 0.75rem; }
+  .submission { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .submission.closed { opacity: 0.7; }
+  .submission .proof { display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; text-align: center; }
+  .submission .proof img { max-width: 100%; max-height: 420px; display: block; margin: 0 auto; }
+  .submission dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.1rem 0.75rem; margin: 0; font-size: 12px; }
+  .submission dt { color: var(--muted); }
+  .submission dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
   #auth-btn { font-size: 12px; padding: 0.2rem 0.6rem; }
   dialog {
     border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem;
@@ -147,6 +157,38 @@
   dialog .actions { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 0.25rem; }
   #login-error { color: var(--danger); font-size: 12px; margin: 0; }
   #login-error:empty { display: none; }
+
+  @media (max-width: 760px) {
+    header { flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 0.75rem; }
+    header .back { display: none; }
+    header h1 { flex: 1; }
+    header > div { display: none; }
+    nav { order: 1; width: 100%; margin-left: 0; overflow-x: auto; }
+    nav button { white-space: nowrap; padding: 0.5rem 0.8rem; }
+    #status { order: 2; width: 100%; white-space: normal; }
+    #status:empty { display: none; }
+    main { padding: 0.75rem; }
+
+    #lb-layout, #mod-layout, .cols { flex-direction: column; align-items: stretch; }
+    #lb-sidebar, #mod-side { width: auto; }
+    #course-list { max-height: 30vh; }
+    .cols ul.picklist, .cols pre { max-height: 40vh; }
+    #tab-moderation ul.picklist, #mod-side ul.picklist { max-height: none; }
+    #users-filter { flex: 1 0 100% !important; }
+    .submission .row [data-act=note] { flex: 1 0 100% !important; order: -1; }
+    .submission .row .btn { flex: 1; }
+    .submission dl { font-size: 13px; }
+
+    /* iOS Safari zooms the page when a focused field's text is under 16px. */
+    input, select, textarea { font-size: 16px; }
+    button.btn, #auth-btn, td .btn, details.boards .row .btn, details.boards summary {
+      padding: 0.5rem 0.9rem; font-size: 14px; min-height: 40px;
+    }
+    input[type=checkbox] { width: 20px; height: 20px; }
+    .form-grid label.field { flex: 1 1 40%; }
+    .form-grid label.field input { width: 100%; }
+    dialog { width: min(300px, 92vw); }
+  }
 </style>
 </head>
 <body>
@@ -158,6 +200,7 @@
     <button data-tab="acceleration">Acceleration</button>
     <button data-tab="speedhive">Speedhive</button>
     <button data-tab="gglc">GGLC</button>
+    <button data-tab="submissions" class="admin-only">Submissions<span id="sub-count" class="count" title="Waiting for review"></span></button>
     <button data-tab="moderation" class="admin-only">Moderation<span id="mod-count" class="count" title="Open reports"></span></button>
   </nav>
   <div style="flex:1"></div>
@@ -329,6 +372,20 @@
   </details>
 </section>
 
+<section id="tab-submissions" class="tab admin-only">
+  <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Submissions</h2>
+      <div class="row">
+        <label class="check inline"><input id="sub-all" type="checkbox"> show reviewed</label>
+        <button class="btn" id="sub-load-btn">Refresh</button>
+      </div>
+    </div>
+    <p class="muted" style="font-size:11px;margin:0.4rem 0">Times typed in by hand in the app, each with a photo as proof. Approve posts the time to its board as the submitter's own; Reject sends your note back to them. Either way the photo is deleted. Click a photo to open it full size.</p>
+    <div id="sub-list"></div>
+  </div>
+</section>
+
 <section id="tab-moderation" class="tab admin-only">
   <div id="mod-layout">
     <div id="mod-side">
@@ -412,19 +469,22 @@ const setStatus = (msg, isError) => {
   statusEl.classList.toggle("error", !!isError);
 };
 
-const TABS = ["leaderboard", "acceleration", "speedhive", "gglc", "moderation"];
+const TABS = ["leaderboard", "acceleration", "speedhive", "gglc", "submissions", "moderation"];
+const ADMIN_TABS = ["submissions", "moderation"];
 function showTab(name) {
   history.replaceState(null, "", "#" + name);
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + name));
+  document.querySelector("nav button.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   if (name === "acceleration") loadAcceleration();
+  if (name === "submissions") loadSubmissions();
   if (name === "moderation") { loadReports(); loadBans(); loadUsers(); }
   if (name === "speedhive" && shLoadedOrg !== $("org-input").value) loadShEvents();
   if (name === "gglc" && gglcLoadedYear !== $("gglc-year").value) loadGglcEvents();
 }
 function openHashTab() {
   const tab = location.hash.slice(1);
-  const ok = TABS.includes(tab) && (tab !== "moderation" || !!adminUser);
+  const ok = TABS.includes(tab) && (!ADMIN_TABS.includes(tab) || !!adminUser);
   if (ok) showTab(tab);
   return ok;
 }
@@ -480,6 +540,7 @@ $("login-form").onsubmit = async e => {
   loadCourses(currentCourse?.id);
   resetAcceleration();
   loadReports();
+  loadSubmissions();
 };
 $("login-cancel").onclick = () => loginDialog.close("cancel");
 $("auth-btn").onclick = async () => {
@@ -490,6 +551,8 @@ $("auth-btn").onclick = async () => {
   // Hiding the admin panels is not enough; what they loaded has to go too.
   $("report-list").innerHTML = "";
   $("mod-count").textContent = "";
+  $("sub-list").innerHTML = "";
+  $("sub-count").textContent = "";
   $("ban-list").innerHTML = "";
   users = [];
   usersLoaded = false;
@@ -501,7 +564,7 @@ $("auth-btn").onclick = async () => {
 function renderAuth() {
   $("auth-btn").textContent = adminUser ? `Sign out (${adminUser})` : "Admin sign in";
   document.body.classList.toggle("admin", !!adminUser);
-  if (!adminUser && $("tab-moderation").classList.contains("active")) showTab("leaderboard");
+  if (!adminUser && ADMIN_TABS.some(tab => $("tab-" + tab).classList.contains("active"))) showTab("leaderboard");
 }
 renderAuth();
 
@@ -906,6 +969,58 @@ async function loadReports() {
 }
 $("reports-load-btn").onclick = loadReports;
 
+const SUBMISSION_LABELS = {
+  time_seconds: "time (s)", driver: "driver", vehicle: "vehicle", year: "year", hp: "hp", weight_lb: "weight lb",
+  zero_to_30_seconds: "0-30 s", zero_to_60_seconds: "0-60 s",
+  quarter_mile_seconds: "1/4 s", quarter_mile_mph: "1/4 mph",
+  eighth_mile_seconds: "1/8 s", eighth_mile_mph: "1/8 mph",
+  top_speed_mph: "top mph", run_date: "date", time_of_day: "time of day", conditions: "conditions", notes: "notes",
+};
+async function loadSubmissions() {
+  const all = $("sub-all").checked;
+  const submissions = await api("/api/admin/submissions" + (all ? "?status=all" : ""));
+  const pending = submissions.filter(s => s.status === "pending");
+  $("sub-count").textContent = pending.length || "";
+  const list = $("sub-list");
+  list.innerHTML = "";
+  if (!submissions.length) list.innerHTML = "<div class='muted'>Nothing is waiting for review.</div>";
+  for (const sub of submissions) {
+    const open = sub.status === "pending";
+    const board = sub.kind === "run" ? `“${esc(sub.course_name ?? "#" + sub.course_id)}”` : "Acceleration board";
+    const rows = Object.entries(SUBMISSION_LABELS)
+      .filter(([key]) => sub.fields[key] != null && sub.fields[key] !== "")
+      .map(([key, label]) => `<dt>${label}</dt><dd>${esc(sub.fields[key])}</dd>`).join("");
+    const card = document.createElement("div");
+    card.className = "submission" + (open ? "" : " closed");
+    card.innerHTML = `
+      <div><strong>${esc(sub.summary)}</strong>${open ? "" : `<span class="badge${sub.status === "rejected" ? " hidden" : ""}">${esc(sub.status)}</span>`}${sub.fields.legacy ? '<span class="badge legacy">legacy</span>' : ""}<br>
+        <span class="muted" style="font-size:12px">${board} · from ${sub.submitter ? esc(personName(sub.submitter)) : "(unknown)"} · ${when(sub.created_at)}${sub.review_note ? " · note: " + esc(sub.review_note) : ""}</span></div>
+      ${sub.has_proof ? `<a class="proof" href="/api/admin/submissions/${sub.id}/proof" target="_blank" rel="noopener"><img src="/api/admin/submissions/${sub.id}/proof" alt="Proof photo" loading="lazy"></a>` : `<div class="muted" style="font-size:12px">Photo deleted after review.</div>`}
+      <dl>${rows}</dl>
+      <div class="row">${open ? '<button class="btn primary" data-act="approve">Approve</button><input data-act="note" maxlength="500" placeholder="Why not (sent to the submitter)" style="flex:1;min-width:0"><button class="btn danger" data-act="reject">Reject</button>' : '<button class="btn danger" data-act="delete">Delete record</button>'}</div>`;
+    if (open) {
+      card.querySelector("[data-act=approve]").onclick = async () => {
+        const result = await api(`/api/admin/submissions/${sub.id}/approve`, { method: "POST" });
+        loadSubmissions();
+        if (sub.kind === "run" && currentCourse?.id === sub.course_id) refreshLeaderboard();
+        setStatus(`approved: ${result.summary}`);
+      };
+      armConfirm(card.querySelector("[data-act=reject]"), async () => {
+        await apiJSON(`/api/admin/submissions/${sub.id}/reject`, "POST", { note: card.querySelector("[data-act=note]").value || null });
+        loadSubmissions();
+      });
+    } else {
+      armConfirm(card.querySelector("[data-act=delete]"), async () => {
+        await api(`/api/submissions/${sub.id}`, { method: "DELETE" });
+        loadSubmissions();
+      });
+    }
+    list.appendChild(card);
+  }
+}
+$("sub-load-btn").onclick = loadSubmissions;
+$("sub-all").onchange = loadSubmissions;
+
 async function loadBans() {
   const bans = await api("/api/leaderboard/bans");
   const ul = $("ban-list");
@@ -1301,7 +1416,14 @@ async function loadGglcEvent(date) {
 
 fetch("/api/admin/session").then(res => res.json()).then(data => { adminUser = data.user; }).catch(() => {}).finally(() => {
   renderAuth();
-  if (!openHashTab() && adminUser) loadReports();
+  if (!openHashTab()) {
+    if (adminUser) loadReports();
+    else if (ADMIN_TABS.includes(location.hash.slice(1))) {
+      const tab = location.hash.slice(1);
+      promptLogin().then(ok => { if (ok) showTab(tab); });
+    }
+  }
+  if (adminUser && !$("tab-submissions").classList.contains("active")) loadSubmissions();
   window.onhashchange = openHashTab;
   loadCourses().then(courses => {
     if (courses.length && !currentCourse) $("course-list").children[0].click();

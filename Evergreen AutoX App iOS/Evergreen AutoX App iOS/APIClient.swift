@@ -138,6 +138,18 @@ struct APIClient {
         try await send("api/account", method: "DELETE")
     }
 
+    func submit(_ input: SubmissionInput) async throws -> Submission {
+        try await send("api/submissions", method: "POST", json: input)
+    }
+
+    func submissions() async throws -> [Submission] {
+        try await get("api/submissions")
+    }
+
+    func deleteSubmission(id: Int) async throws {
+        let _: Deleted = try await send("api/submissions/\(id)", method: "DELETE")
+    }
+
     func parseTrackAddict(csv: Data) async throws -> TAParsedLog {
         try await send("api/trackaddict/parse", method: "POST", body: csv, contentType: "text/csv")
     }

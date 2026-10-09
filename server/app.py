@@ -1,5 +1,8 @@
+import base64
+import binascii
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -66,6 +69,15 @@ SESSION_SECONDS = 30 * 24 * 60 * 60
 DEVICE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 MAX_COURSES_PER_OWNER = 20
 MAX_ACCELERATION_PER_OWNER = 20
+MAX_PENDING_SUBMISSIONS = 5
+MAX_PROOF_BYTES = 4 * 1024 * 1024
+# Matched against the file's first bytes: what the upload calls itself is not
+# trusted, and the dev console must never be handed something a browser would
+# render as a page.
+PROOF_TYPES = {
+    b"\xff\xd8\xff": ("jpg", "image/jpeg"),
+    b"\x89PNG\r\n\x1a\n": ("png", "image/png"),
+}
 # A device that never signed in, posted, joined, blocked or reported is only a
 # row; these bound how many of them the table keeps.
 IDLE_DEVICE_DAYS = 90
@@ -148,6 +160,7 @@ IDENTITY_COLUMNS = (
     ("blocks", "blocked_id"),
     ("bans", "device_id"),
     ("course_members", "device_id"),
+    ("submissions", "owner_id"),
 )
 _IDENTITIES = " UNION ".join(
     f"SELECT {column} AS id FROM {table}" for table, column in IDENTITY_COLUMNS
@@ -521,6 +534,19 @@ class AccelerationUpdate(AccelerationIn):
     hidden: bool | None = None
 
 
+# A time typed in by hand, with a photo to back it up. It only reaches a board
+# once the admin approves it.
+class SubmissionIn(BaseModel):
+    course_id: int | None = None
+    run: RunIn | None = None
+    acceleration: AccelerationIn | None = None
+    proof: Annotated[str, Field(min_length=1, max_length=MAX_PROOF_BYTES * 4 // 3 + 4)]
+
+
+class ReviewIn(BaseModel):
+    note: LongStr = None
+
+
 class TargetIn(BaseModel):
     target_type: Literal["course", "run", "acceleration"]
     target_id: int
@@ -849,6 +875,7 @@ def set_course_hidden(course_id: int, body: HiddenIn, admin: AdminDep):
 def delete_course(course_id: int, actor: WriterDep):
     with db.session() as conn:
         _require_course_owner(_get_course(conn, course_id, actor), actor)
+        _delete_submissions(conn, "course_id = ?", (course_id,))
         conn.execute("DELETE FROM courses WHERE id = ?", (course_id,))
         return {"deleted": course_id}
 
@@ -954,41 +981,53 @@ def get_leaderboard(course_id: int, actor: ActorDep):
         return {"course": _course_out(conn, course, actor), "runs": runs}
 
 
-@app.post("/api/leaderboard/courses/{course_id}/runs")
-def create_run(course_id: int, run: RunIn, actor: WriterDep):
-    time_seconds = _parse_time(run.time)
-    driver = _clean(run.driver)
-    if not driver:
+# The checked, cleaned columns of a new run, shared by posting one and by
+# submitting one for review.
+def _run_fields(run: RunIn, actor: Actor) -> dict:
+    fields = {
+        "driver": _clean(run.driver),
+        "vehicle": _clean(run.vehicle),
+        "hp": run.hp,
+        "time_seconds": _parse_time(run.time),
+        "avg_speed_mph": run.avg_speed_mph,
+        "top_speed_mph": run.top_speed_mph,
+        "run_date": _clean(run.run_date),
+        "time_of_day": _clean(run.time_of_day),
+        "conditions": _clean(run.conditions),
+        "legacy": int(run.legacy),
+        "notes": _clean(run.notes),
+        "source": run.source,
+    }
+    if not fields["driver"]:
         raise HTTPException(status_code=400, detail="Driver cannot be blank")
     _require_account(actor)
-    _reject_blocked_words(actor, driver, run.vehicle, run.conditions, run.notes)
+    _reject_blocked_words(
+        actor,
+        *(fields[key] for key in ("driver", "vehicle", "conditions", "notes")),
+    )
+    return fields
+
+
+def _insert_row(conn, table: str, fields: dict) -> int:
+    cur = conn.execute(
+        f"""INSERT INTO {table} ({", ".join(fields)})
+            VALUES ({", ".join("?" for _ in fields)})""",
+        tuple(fields.values()),
+    )
+    return cur.lastrowid
+
+
+@app.post("/api/leaderboard/courses/{course_id}/runs")
+def create_run(course_id: int, run: RunIn, actor: WriterDep):
+    fields = _run_fields(run, actor)
     with db.session() as conn:
         course = _get_course(conn, course_id, actor)
-        cur = conn.execute(
-            """INSERT INTO runs (course_id, driver, vehicle, hp, time_seconds,
-                avg_speed_mph, top_speed_mph, run_date, time_of_day, conditions,
-                legacy, notes, source, owner_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                course_id,
-                driver,
-                _clean(run.vehicle),
-                run.hp,
-                time_seconds,
-                run.avg_speed_mph,
-                run.top_speed_mph,
-                _clean(run.run_date),
-                _clean(run.time_of_day),
-                _clean(run.conditions),
-                int(run.legacy),
-                _clean(run.notes),
-                run.source,
-                actor.device_id,
-            ),
+        run_id = _insert_row(
+            conn,
+            "runs",
+            {**fields, "course_id": course_id, "owner_id": actor.device_id},
         )
-        return db.run_to_dict(
-            _get_run(conn, cur.lastrowid, actor), course, actor.device_id
-        )
+        return db.run_to_dict(_get_run(conn, run_id, actor), course, actor.device_id)
 
 
 @app.patch("/api/leaderboard/runs/{run_id}")
@@ -1197,6 +1236,7 @@ def _ban(conn, poster: str, label: str | None, reason: str | None) -> dict:
     conn.execute(
         "UPDATE acceleration_entries SET hidden = 1 WHERE owner_id = ?", (poster,)
     )
+    _delete_submissions(conn, "owner_id = ? AND status = 'pending'", (poster,))
     return _ban_to_dict(
         conn.execute("SELECT * FROM bans WHERE device_id = ?", (poster,)).fetchone()
     )
@@ -1417,6 +1457,7 @@ def _adopt_device(conn, token: str, owner_id: str) -> None:
         ("runs", "owner_id"),
         ("acceleration_entries", "owner_id"),
         ("reports", "reporter_id"),
+        ("submissions", "owner_id"),
     ):
         conn.execute(
             f"UPDATE {table} SET {column} = ? WHERE {column} = ?", (owner_id, token)
@@ -1560,6 +1601,12 @@ def delete_account(actor: ActorDep):
             "SELECT * FROM users WHERE id = ?", (actor.user_id,)
         ).fetchone()
         owner_id = actor.device_id
+        _delete_submissions(
+            conn,
+            """owner_id = ? OR course_id IN
+                   (SELECT id FROM courses WHERE owner_id = ?)""",
+            (owner_id, owner_id),
+        )
         conn.execute("DELETE FROM runs WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM courses WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM acceleration_entries WHERE owner_id = ?", (owner_id,))
@@ -1628,8 +1675,7 @@ def list_acceleration(actor: ActorDep):
     return entries
 
 
-@app.post("/api/acceleration", status_code=201)
-def create_acceleration(entry: AccelerationIn, actor: WriterDep):
+def _acceleration_fields(entry: AccelerationIn, actor: Actor) -> dict:
     fields = entry.model_dump()
     for key in ACCELERATION_TEXT_FIELDS:
         fields[key] = _clean(fields[key])
@@ -1641,7 +1687,12 @@ def create_acceleration(entry: AccelerationIn, actor: WriterDep):
         fields[key] is None for key in ACCELERATION_TIME_FIELDS
     ):
         raise HTTPException(status_code=400, detail="An entry needs at least one time")
-    fields["owner_id"] = actor.device_id
+    return fields
+
+
+@app.post("/api/acceleration", status_code=201)
+def create_acceleration(entry: AccelerationIn, actor: WriterDep):
+    fields = {**_acceleration_fields(entry, actor), "owner_id": actor.device_id}
     with db.session() as conn:
         if actor.device_id is not None:
             owned = conn.execute(
@@ -1653,13 +1704,9 @@ def create_acceleration(entry: AccelerationIn, actor: WriterDep):
                     status_code=429,
                     detail=f"Limit of {MAX_ACCELERATION_PER_OWNER} acceleration entries per device",
                 )
-        cur = conn.execute(
-            f"""INSERT INTO acceleration_entries ({", ".join(fields)})
-                VALUES ({", ".join("?" for _ in fields)})""",
-            tuple(fields.values()),
-        )
+        entry_id = _insert_row(conn, "acceleration_entries", fields)
         return db.acceleration_to_dict(
-            _get_acceleration(conn, cur.lastrowid, actor), actor.device_id
+            _get_acceleration(conn, entry_id, actor), actor.device_id
         )
 
 
@@ -1702,6 +1749,238 @@ def delete_acceleration(entry_id: int, actor: WriterDep):
         _require_acceleration_owner(_get_acceleration(conn, entry_id, actor), actor)
         conn.execute("DELETE FROM acceleration_entries WHERE id = ?", (entry_id,))
         return {"deleted": entry_id}
+
+
+def _decode_proof(encoded: str) -> tuple[bytes, str]:
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="The proof photo did not upload correctly"
+        ) from exc
+    if len(data) > MAX_PROOF_BYTES:
+        raise HTTPException(status_code=413, detail="The proof photo is too large")
+    for magic, (extension, _) in PROOF_TYPES.items():
+        if data.startswith(magic):
+            return data, extension
+    raise HTTPException(status_code=400, detail="The proof must be a JPEG or PNG image")
+
+
+def _unlink_proof(name: str | None) -> None:
+    if name:
+        (db.proof_dir() / name).unlink(missing_ok=True)
+
+
+# Rows go through here rather than a bare DELETE (or the cascade from their
+# course) so their photos go with them.
+def _delete_submissions(conn, where: str, params: tuple) -> int:
+    rows = conn.execute(
+        f"SELECT id, proof_file FROM submissions WHERE {where}", params
+    ).fetchall()
+    for row in rows:
+        conn.execute("DELETE FROM submissions WHERE id = ?", (row["id"],))
+        _unlink_proof(row["proof_file"])
+    return len(rows)
+
+
+def _course_names(conn) -> dict[int, str]:
+    return {
+        row["id"]: row["name"] for row in conn.execute("SELECT id, name FROM courses")
+    }
+
+
+def _get_submission(conn, submission_id: int):
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail=f"Submission {submission_id} not found"
+        )
+    return row
+
+
+def _pending_submission(conn, submission_id: int):
+    row = _get_submission(conn, submission_id)
+    if row["status"] != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Submission {submission_id} is already {row['status']}",
+        )
+    return row
+
+
+# The photo is only kept while the admin still has to look at it.
+def _close_submission(
+    conn, row, status: str, note: str | None, result_id: int | None = None
+) -> dict:
+    conn.execute(
+        """UPDATE submissions SET status = ?, review_note = ?, result_id = ?,
+               proof_file = NULL, reviewed_at = datetime('now') WHERE id = ?""",
+        (status, note, result_id, row["id"]),
+    )
+    _unlink_proof(row["proof_file"])
+    return db.submission_to_dict(
+        _get_submission(conn, row["id"]), _course_names(conn).get(row["course_id"])
+    )
+
+
+@app.post("/api/submissions", status_code=201)
+def create_submission(body: SubmissionIn, actor: WriterDep):
+    if actor.device_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Submissions come from the app; the admin posts directly",
+        )
+    if (body.run is None) == (body.acceleration is None):
+        raise HTTPException(
+            status_code=400, detail="Send either a run or an acceleration entry"
+        )
+    if body.run is not None:
+        if body.course_id is None:
+            raise HTTPException(status_code=400, detail="A run needs a course_id")
+        kind, course_id = "run", body.course_id
+        fields = _run_fields(body.run, actor)
+    else:
+        kind, course_id = "acceleration", None
+        fields = _acceleration_fields(body.acceleration, actor)
+    # A run carries its year inside the vehicle name, so only an acceleration
+    # entry can be checked for one.
+    required = ("vehicle", "hp") if kind == "run" else ("vehicle", "year", "hp")
+    if any(fields[key] in (None, "") for key in required):
+        raise HTTPException(
+            status_code=400, detail="Enter the vehicle's year, name and HP"
+        )
+    fields["source"] = "photo"
+    data, extension = _decode_proof(body.proof)
+    with db.session() as conn:
+        course = _get_course(conn, course_id, actor) if course_id is not None else None
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM submissions WHERE owner_id = ? AND status = 'pending'",
+            (actor.device_id,),
+        ).fetchone()[0]
+        if pending >= MAX_PENDING_SUBMISSIONS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"You already have {MAX_PENDING_SUBMISSIONS} times waiting for review",
+            )
+        name = f"{secrets.token_hex(16)}.{extension}"
+        db.proof_dir().mkdir(exist_ok=True)
+        (db.proof_dir() / name).write_bytes(data)
+        try:
+            submission_id = _insert_row(
+                conn,
+                "submissions",
+                {
+                    "kind": kind,
+                    "course_id": course_id,
+                    "payload": json.dumps(fields),
+                    "proof_file": name,
+                    "owner_id": actor.device_id,
+                },
+            )
+        except sqlite3.Error:
+            _unlink_proof(name)
+            raise
+        return db.submission_to_dict(
+            _get_submission(conn, submission_id), course["name"] if course else None
+        )
+
+
+# What the caller is still waiting on, and what was turned down.
+@app.get("/api/submissions")
+def list_own_submissions(actor: ActorDep):
+    if actor.device_id is None:
+        return []
+    with db.session() as conn:
+        names = _course_names(conn)
+        return [
+            db.submission_to_dict(row, names.get(row["course_id"]))
+            for row in conn.execute(
+                """SELECT * FROM submissions WHERE owner_id = ? AND status != 'approved'
+                   ORDER BY id DESC""",
+                (actor.device_id,),
+            )
+        ]
+
+
+@app.delete("/api/submissions/{submission_id}")
+def delete_submission(submission_id: int, actor: ActorDep):
+    with db.session() as conn:
+        row = conn.execute(
+            "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+        ).fetchone()
+        if row is None or not (actor.is_admin or _owns(row, actor)):
+            raise HTTPException(
+                status_code=404, detail=f"Submission {submission_id} not found"
+            )
+        _delete_submissions(conn, "id = ?", (submission_id,))
+        return {"deleted": submission_id}
+
+
+@app.get("/api/admin/submissions")
+def list_submissions(_: AdminDep, status: str = "pending"):
+    with db.session() as conn:
+        names = _course_names(conn)
+        people = {person["owner"]: person for person in _people(conn)}
+        out = []
+        for row in conn.execute(
+            """SELECT * FROM submissions WHERE ? IN ('all', status)
+               ORDER BY status = 'pending' DESC, id DESC LIMIT 200""",
+            (status,),
+        ):
+            submission = db.submission_to_dict(row, names.get(row["course_id"]))
+            person = people.get(row["owner_id"])
+            submission["submitter"] = person and {
+                key: person[key] for key in ("kind", "id", "label", "name", "names")
+            }
+            out.append(submission)
+        return out
+
+
+@app.get("/api/admin/submissions/{submission_id}/proof")
+def get_submission_proof(submission_id: int, _: AdminDep):
+    with db.session() as conn:
+        name = _get_submission(conn, submission_id)["proof_file"]
+    path = db.proof_dir() / name if name else None
+    if path is None or not path.is_file():
+        raise HTTPException(
+            status_code=404, detail=f"Submission {submission_id} has no proof photo"
+        )
+    media_type = next(
+        mime for extension, mime in PROOF_TYPES.values() if extension == path.suffix[1:]
+    )
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+# Approving posts the time exactly as an ordinary post by the submitter would
+# have: theirs to edit or delete, and gone with their account.
+@app.post("/api/admin/submissions/{submission_id}/approve")
+def approve_submission(submission_id: int, _: AdminDep):
+    with db.session() as conn:
+        row = _pending_submission(conn, submission_id)
+        fields = {**json.loads(row["payload"]), "owner_id": row["owner_id"]}
+        if row["kind"] == "run":
+            result_id = _insert_row(
+                conn, "runs", {**fields, "course_id": row["course_id"]}
+            )
+        else:
+            result_id = _insert_row(conn, "acceleration_entries", fields)
+        return _close_submission(conn, row, "approved", None, result_id)
+
+
+@app.post("/api/admin/submissions/{submission_id}/reject")
+def reject_submission(submission_id: int, review: ReviewIn, _: AdminDep):
+    with db.session() as conn:
+        row = _pending_submission(conn, submission_id)
+        return _close_submission(conn, row, "rejected", _clean(review.note))
 
 
 @app.post("/api/trackaddict/parse")

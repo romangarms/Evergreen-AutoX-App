@@ -80,6 +80,7 @@ final class AppModel {
     var leaderboardDetail: LBCourseDetail?
     var leaderboardError: String?
     var blocks: [LBBlock] = []
+    var submissions: [Submission] = []
     var account: Account?
     var accelerationEntries: [AccelEntry]?
     var accelerationError: String?
@@ -711,6 +712,7 @@ final class AppModel {
     private func refreshOwnership() async {
         await refreshLeaderboardEvents()
         await loadBlocks()
+        await loadSubmissions()
         if accelerationEntries != nil {
             loadAcceleration()
         }
@@ -732,6 +734,22 @@ final class AppModel {
         if let loaded = try? await client.blocks() {
             blocks = loaded
         }
+    }
+
+    func loadSubmissions() async {
+        if let loaded = try? await client.submissions() {
+            submissions = loaded
+        }
+    }
+
+    func submit(_ input: SubmissionInput) async throws {
+        let submission = try await client.submit(input)
+        submissions.insert(submission, at: 0)
+    }
+
+    func deleteSubmission(id: Int) async throws {
+        try await client.deleteSubmission(id: id)
+        submissions.removeAll { $0.id == id }
     }
 
     func parseTrackAddict(csv: Data) async throws -> [TALap] {

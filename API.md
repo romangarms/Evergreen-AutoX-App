@@ -54,6 +54,20 @@ Legacy runs were set on the old, longer course; their adjusted time is scaled by
 - `POST /api/acceleration` — add an entry (`vehicle`, optional `year`, `driver`, `hp`, `weight_lb`, `zero_to_30_seconds`, `zero_to_60_seconds`, `eighth_mile_seconds`, `eighth_mile_mph`, `quarter_mile_seconds`, `quarter_mile_mph`, `notes`, `source`). A device needs an account and at least one time, and is limited to 20 entries
 - `PATCH` / `DELETE /api/acceleration/{entry_id}` — the poster or admin; only the admin can set `hidden`
 
+## Submissions for review
+
+A time typed in by hand, with a photo as proof. Nothing is posted until the admin approves it, and the photo is readable only by the admin.
+
+- `POST /api/submissions` — signed-in device only: submit a run (`course_id` plus `run`, the same fields as posting a run) or an acceleration entry (`acceleration`, the same fields as posting one), with `proof`, a base64 JPEG or PNG of at most 4 MB. `vehicle` and `hp` are required here, and so is `year` on an acceleration entry. At most 5 can be waiting per account
+- `GET /api/submissions` — this device's submissions that are waiting or were rejected, each with a one-line `summary`, its `status` and the admin's `review_note`
+- `DELETE /api/submissions/{submission_id}` — its submitter withdraws it, or the admin removes it
+- `GET /api/admin/submissions?status=` — admin only: the queue with each `submitter` (`status` of `pending`, the default, `approved`, `rejected` or `all`)
+- `GET /api/admin/submissions/{submission_id}/proof` — admin only: the photo, while the submission is pending
+- `POST /api/admin/submissions/{submission_id}/approve` — admin only: post it as the submitter's own run or entry, with `source` of `photo`
+- `POST /api/admin/submissions/{submission_id}/reject` — admin only: turn it down (optional `note`, shown to the submitter)
+
+Approving, rejecting or deleting a submission deletes its photo.
+
 ## Reports, blocks and bans
 
 - `POST /api/leaderboard/reports` — flag a course, run, or acceleration entry (`target_type` of `course`/`run`/`acceleration`, `target_id`, `reason`)

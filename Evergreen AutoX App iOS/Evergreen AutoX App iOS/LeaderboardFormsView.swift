@@ -248,6 +248,7 @@ struct RunFormView: View {
     let course: LBCourse
 
     @State private var driver = ""
+    @State private var year = ""
     @State private var vehicle = ""
     @State private var hp = ""
     @State private var conditions = ""
@@ -258,19 +259,33 @@ struct RunFormView: View {
     @State private var importing = false
     @State private var laps: [TALap] = []
     @State private var selectedLap: Int?
+    @State private var manual = false
+    @State private var manualTime = ""
+    @State private var proof: Data?
     @State private var error: String?
     @State private var saving = false
 
+    private var showsDetails: Bool { manual || selectedLap != nil }
+
     var body: some View {
         EGSheetFrame(title: "Post a Time", subtitle: course.name) {
-            importBox
-            if selectedLap != nil {
+            if manual {
+                ProofPhotoBox(proof: $proof)
+            } else {
+                importBox
+            }
+            ProofModeButton(manual: $manual)
+            if manual {
+                EGFormField(label: "TIME", placeholder: "1:17.967", text: $manualTime, keyboard: .numbersAndPunctuation)
+            }
+            if showsDetails {
                 EGFormField(label: "DRIVER", placeholder: "Your name", text: $driver)
                 HStack(spacing: 10) {
-                    EGFormField(label: "VEHICLE (OPTIONAL)", placeholder: "2007 BMW Z4M", text: $vehicle)
-                    EGFormField(label: "HP (OPTIONAL)", placeholder: "330", text: $hp, keyboard: .numberPad)
-                        .egWidth(96)
+                    EGFormField(label: "YEAR", placeholder: "2007", text: $year, keyboard: .numberPad)
+                        .egWidth(110)
+                    EGFormField(label: "VEHICLE", placeholder: "BMW Z4M", text: $vehicle)
                 }
+                EGFormField(label: "HP", placeholder: "330", text: $hp, keyboard: .numberPad)
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         EGColumnLabel(text: "DATE")
@@ -286,17 +301,19 @@ struct RunFormView: View {
                 EGFormField(label: "NOTES (OPTIONAL)", placeholder: "Tires, traffic, anything worth knowing", text: $notes, capitalization: .sentences)
             }
             EGErrorText(text: error)
-            if selectedLap != nil {
-                Button("POST TIME") {
+            if showsDetails {
+                Button(manual ? "SUBMIT FOR REVIEW" : "POST TIME") {
                     Task { await save() }
                 }
                 .buttonStyle(EGButtonStyle(kind: .primary))
                 .disabled(saving)
+                if manual { ProofReviewNote() }
             }
         }
         .onAppear {
             if driver.isEmpty { driver = model.posterName }
         }
+        .onChange(of: manual) { error = nil }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text, .data]) { result in
             if case .success(let url) = result {
                 Task { await importLog(url) }
@@ -421,40 +438,75 @@ struct RunFormView: View {
             error = "Enter the driver's name."
             return
         }
-        guard let lap = laps.first(where: { $0.lap == selectedLap }), let time = lap.time else {
-            error = laps.isEmpty ? "Import a TrackAddict CSV to post a time." : "Tap the lap you want to post."
-            return
-        }
-        var horsepower: Int?
-        if !hp.trimmingCharacters(in: .whitespaces).isEmpty {
-            guard let value = Int(hp.trimmingCharacters(in: .whitespaces)), value >= 0 else {
-                error = "HP must be a whole number."
+        let lap = laps.first { $0.lap == selectedLap }
+        let time: String
+        if manual {
+            time = manualTime.trimmingCharacters(in: .whitespaces)
+            guard Self.isTime(time) else {
+                error = "Enter the time as minutes:seconds, like 1:17.967."
                 return
             }
-            horsepower = value
+            guard proof != nil else {
+                error = "Choose a photo that shows this time."
+                return
+            }
+        } else {
+            guard let logged = lap?.time else {
+                error = laps.isEmpty ? "Import a TrackAddict CSV to post a time." : "Tap the lap you want to post."
+                return
+            }
+            time = logged
+        }
+        let vehicleName = vehicle.trimmingCharacters(in: .whitespaces)
+        guard !vehicleName.isEmpty else {
+            error = "Enter the vehicle."
+            return
+        }
+        let yearText = year.trimmingCharacters(in: .whitespaces)
+        guard Int(yearText).map((1880...2100).contains) == true else {
+            error = "Enter the car's model year."
+            return
+        }
+        guard let horsepower = Int(hp.trimmingCharacters(in: .whitespaces)), (0...5000).contains(horsepower) else {
+            error = "Enter the car's HP as a whole number."
+            return
         }
         let input = LBRunInput(
             driver: driver,
             time: time,
-            vehicle: vehicle.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+            // Runs have no year of their own: boards carry it in the vehicle
+            // name, as the sheets they were seeded from do.
+            vehicle: "\(yearText) \(vehicleName)",
             hp: horsepower,
-            topSpeedMph: lap.topSpeedMph.map { ($0 * 10).rounded() / 10 },
+            topSpeedMph: manual ? nil : lap?.topSpeedMph.map { ($0 * 10).rounded() / 10 },
             runDate: Self.dateString(date),
             conditions: conditions.trimmingCharacters(in: .whitespaces).nilIfEmpty,
             legacy: legacy,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            source: "trackaddict"
+            source: manual ? "photo" : "trackaddict"
         )
         saving = true
         error = nil
         do {
             model.posterName = driver
-            try await model.addRun(courseID: course.id, input)
+            if manual, let proof {
+                try await model.submit(SubmissionInput(courseID: course.id, run: input, proof: proof.base64EncodedString()))
+            } else {
+                try await model.addRun(courseID: course.id, input)
+            }
             dismiss()
         } catch {
             self.error = error.localizedDescription
         }
         saving = false
+    }
+
+    private static func isTime(_ text: String) -> Bool {
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        guard (1...3).contains(parts.count), parts.allSatisfy({ Double($0).map { $0 >= 0 } ?? false }) else {
+            return false
+        }
+        return parts.contains { Double($0) != 0 }
     }
 
     private static func dateString(_ date: Date) -> String {

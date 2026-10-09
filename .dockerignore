@@ -2,5 +2,6 @@
 __pycache__/
 *.pyc
 .git/
+server/proofs/
 Evergreen AutoX App iOS/
 Evergreen AutoX Timing.html

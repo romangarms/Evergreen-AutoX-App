@@ -81,6 +81,8 @@ The dev console's Sign in button posts the login once and gets back a 30-day Htt
 
 `server/backup_db.py` snapshots `server/leaderboard.db` with SQLite's online backup API (safe while the server runs) into `/mnt/Data/Backups/autox-leaderboard/` (override with `AUTOX_BACKUP_DIR`). It only writes a new timestamped file when the database content changed since the last snapshot, keeps the newest 365 snapshots (`AUTOX_BACKUP_KEEP`), and refuses to run if the destination isn't on a mounted drive.
 
+Proof photos for submissions waiting on review are files in `server/proofs/`, not in the database, so they are not in these snapshots; a restored database may list a pending submission whose photo is gone.
+
 On the public server it runs hourly from the user crontab (`crontab -l`), logging to `~/.local/state/autox-backup.log`.
 
 ```bash
