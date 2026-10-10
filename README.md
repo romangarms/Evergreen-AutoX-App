@@ -62,6 +62,7 @@ Settings in `.env`:
 | `LEADERBOARD_ADMIN_PASSWORD` | Required; with it unset, admin Basic auth returns 503 |
 | `LEADERBOARD_READ_KEY` | The website's read key; `./start.sh` generates one if it is missing |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Optional Sign in with Apple key, so deleting an account also revokes its Apple sign-in |
+| `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_PRIVATE_KEY` | Optional Apple Push Notifications key; without it the server sends no new-time notifications and does not poll for them |
 
 To change them:
 
@@ -70,6 +71,7 @@ To change them:
 ./start.sh read-key                # print the website's read key
 ./start.sh new-read-key            # replace it; rebuild the website with the new one
 ./start.sh apple-key AuthKey_XXXXXXXXXX.p8
+./start.sh push-key AuthKey_XXXXXXXXXX.p8   # an APNs key; may be the same .p8 if it has APNs enabled
 ./start.sh                         # restart so the server picks them up
 ```
 

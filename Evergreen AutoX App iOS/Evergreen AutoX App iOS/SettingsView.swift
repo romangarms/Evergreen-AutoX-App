@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var versionTaps = 0
     @State private var blockError: String?
     @State private var adminDashboard: AdminDashboardLink?
+    @State private var notificationsBlocked = false
 
     private static let supportURL = URL(string: "\(AppModel.defaultBaseURL)/support")!
     private static let privacyURL = URL(string: "\(AppModel.defaultBaseURL)/privacy")!
@@ -24,6 +25,8 @@ struct SettingsView: View {
                     sectionHeader("ACCOUNT")
                     AccountSection()
                 }
+
+                notificationsSection
 
                 if model.hiddenCourseCount > 0 {
                     VStack(alignment: .leading, spacing: 8) {
@@ -103,6 +106,58 @@ struct SettingsView: View {
             await model.loadAccount()
             await model.loadBlocks()
         }
+        .task {
+            guard model.wantsNotifications else { return }
+            let allowed = await PushPermission.allowed()
+            notificationsBlocked = !allowed
+        }
+    }
+
+    private var notificationsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("NOTIFICATIONS")
+            Text("Get a notification when a new Speedhive or GGLC time posts for the car you marked as you, or for drivers you pinned. They follow those names into new events until you mark someone there.")
+                .egFont(11)
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                notificationToggle("MY TIMES", isOn: model.notifyMe) { model.notifyMe = $0 }
+                notificationToggle("FRIENDS' TIMES", isOn: model.notifyFriends) { model.notifyFriends = $0 }
+            }
+            if notificationsBlocked {
+                Text("Notifications are turned off for AutoX Live in iOS Settings.")
+                    .egFont(11)
+                    .foregroundStyle(Color.egRed)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("OPEN SETTINGS") {
+                    if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .buttonStyle(EGButtonStyle())
+            }
+        }
+    }
+
+    private func notificationToggle(_ title: String, isOn: Bool, set: @escaping (Bool) -> Void) -> some View {
+        Button {
+            guard !isOn else {
+                set(false)
+                if !model.wantsNotifications { notificationsBlocked = false }
+                return
+            }
+            Task {
+                let granted = await PushPermission.request()
+                notificationsBlocked = !granted
+                if granted { set(true) }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                EGCheckbox(checked: isOn, size: 18)
+                Text(title)
+            }
+        }
+        .buttonStyle(EGChipButtonStyle())
     }
 
     private var devSection: some View {

@@ -1053,6 +1053,29 @@ function labelRow(value, save, placeholder = "Private label") {
 }
 
 const openBoards = new Set();
+function notificationsText(phone) {
+  if (!phone.notifications) return "";
+  const kinds = phone.notifications.map(k => k === "me" ? "own times" : "friends' times");
+  return ` · notifications for ${kinds.join(" and ")}`;
+}
+
+function testPushRow(deviceId) {
+  const row = document.createElement("div");
+  row.className = "row admin-only";
+  row.style.marginTop = "0.3rem";
+  row.innerHTML = `<button class="btn">Send test notification</button><span class="sub"></span>`;
+  const out = row.querySelector("span");
+  row.querySelector("button").onclick = async () => {
+    out.textContent = "sending…";
+    try {
+      out.textContent = (await apiJSON(`/api/admin/devices/${deviceId}/test-push`, "POST", {})).result;
+    } catch (err) {
+      out.textContent = String(err.message || err);
+    }
+  };
+  return row;
+}
+
 function renderUsers() {
   const ul = $("user-list");
   const filter = $("users-filter").value.trim().toLowerCase();
@@ -1074,7 +1097,8 @@ function renderUsers() {
     li.style.cursor = "default";
     li.innerHTML = `<strong>${esc(personName(u))}</strong>${u.banned ? '<span class="badge hidden">banned</span>' : ""}${isAccount ? '<span class="badge">account</span>' : ""}<br>
       <span class="sub">${isAccount ? "Apple: " + esc([u.name, u.email].filter(Boolean).join(" · ") || "no name shared") : "phone #" + u.id + " · not signed in"}${u.names.length ? " · posts as " + esc(u.names.join(", ")) : ""} · created ${plural(u.courses, "board")} · posted ${plural(u.runs, "run")}, ${u.acceleration} accel<br>
-      last seen ${u.last_seen ? when(u.last_seen) : (isAccount ? "(signed out everywhere)" : "before tracking")}${u.first_seen ? (isAccount ? " · account created " : " · first seen ") + when(u.first_seen) : ""}</span>`;
+      last seen ${u.last_seen ? when(u.last_seen) : (isAccount ? "(signed out everywhere)" : "before tracking")}${u.first_seen ? (isAccount ? " · account created " : " · first seen ") + when(u.first_seen) : ""}${isAccount ? "" : notificationsText(u)}</span>`;
+    if (!isAccount && u.notifications) li.appendChild(testPushRow(u.id));
     li.appendChild(labelRow(u.label, value =>
       apiJSON(isAccount ? `/api/admin/users/${u.id}` : `/api/admin/devices/${u.id}`, "PATCH", { label: value }),
       isAccount ? "Private label for this account" : "Private label"));
@@ -1086,8 +1110,9 @@ function renderUsers() {
         const sub = document.createElement("div");
         sub.className = "sub";
         sub.style.marginTop = "0.3rem";
-        sub.innerHTML = `phone #${d.id}${d.first_seen ? " · first seen " + when(d.first_seen) : ""} · last seen ${d.last_seen ? when(d.last_seen) : "?"}`;
+        sub.innerHTML = `phone #${d.id}${d.first_seen ? " · first seen " + when(d.first_seen) : ""} · last seen ${d.last_seen ? when(d.last_seen) : "?"}${notificationsText(d)}`;
         phones.appendChild(sub);
+        if (d.notifications) phones.appendChild(testPushRow(d.id));
         phones.appendChild(labelRow(d.label, value => apiJSON(`/api/admin/devices/${d.id}`, "PATCH", { label: value }), `Private label for phone #${d.id}`));
       }
       li.appendChild(phones);

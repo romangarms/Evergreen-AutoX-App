@@ -138,6 +138,14 @@ struct APIClient {
         try await send("api/account", method: "DELETE")
     }
 
+    func setPush(_ setup: PushSetup) async throws -> PushStatus {
+        try await send("api/push", method: "PUT", json: setup)
+    }
+
+    func clearPush() async throws -> PushStatus {
+        try await send("api/push", method: "DELETE")
+    }
+
     func submit(_ input: SubmissionInput) async throws -> Submission {
         try await send("api/submissions", method: "POST", json: input)
     }

@@ -9,7 +9,9 @@ import secrets
 import sqlite3
 import time
 from collections import Counter, defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -18,6 +20,8 @@ import cache
 import db
 import gglc
 import moderation
+import notify
+import push
 import ratelimit
 import trackaddict
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
@@ -34,7 +38,27 @@ from pydantic import BaseModel, Field
 from speedhive.generated.api.session_controller import get_all_lap_times
 from speedhive.wrapper import SpeedhiveClient
 
-app = FastAPI(title="AutoX Live server")
+# The Speedhive org the app opens on, and so the one whose events today are
+# watched for people followed by name.
+SPEEDHIVE_ORG_ID = 151294
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Nothing could be delivered without an APNs key, so nothing is polled.
+    if push.configured():
+        upstream = notify.Upstream(
+            sessions=get_sessions,
+            results=_results,
+            laps=_raw_laps,
+            gglc_event=_gglc_event,
+            events=lambda org_id: get_events(org_id, limit=EVENT_LIST_LIMIT),
+        )
+        notify.start(notify.Watcher(upstream, SPEEDHIVE_ORG_ID), gglc.today)
+    yield
+
+
+app = FastAPI(title="AutoX Live server", lifespan=lifespan)
 
 # The leaderboard site at romangarms.com/ar/ reads the API straight from the browser.
 app.add_middleware(
@@ -175,6 +199,7 @@ _last_prune = 0.0
 # nothing: its row comes back the next time it calls.
 def _prune_devices(conn) -> None:
     idle = f"""user_id IS NULL AND label IS NULL
+               AND id NOT IN (SELECT device_id FROM push_registrations)
                AND token NOT IN (SELECT id FROM ({_IDENTITIES}) WHERE id IS NOT NULL)"""
     conn.execute(
         f"""DELETE FROM devices WHERE {idle}
@@ -381,6 +406,8 @@ def delete_admin_session(response: Response):
 # most once per TTL however many phones ask.
 LIVE_TTL = 10
 LIST_TTL = 60
+# What the app asks for, so the notification watcher shares its cache entry.
+EVENT_LIST_LIMIT = 200
 
 
 def _fetch_laps(session_id: int) -> list:
@@ -484,13 +511,17 @@ def gglc_events(year: int | None = None):
     return cache.cached(("gglc-events", year), LIST_TTL, lambda: gglc.list_events(year))
 
 
+def _gglc_event(day: date) -> dict | None:
+    return cache.cached(("gglc-event", day), LIVE_TTL, lambda: gglc.fetch_event(day))
+
+
 @app.get("/api/gglc/events/{event_date}")
 def gglc_event(event_date: str):
     try:
         day = gglc.parse_date(event_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    event = cache.cached(("gglc-event", day), LIVE_TTL, lambda: gglc.fetch_event(day))
+    event = _gglc_event(day)
     if event is None:
         raise HTTPException(
             status_code=404, detail=f"No GGLC results for {day.isoformat()}"
@@ -1438,13 +1469,24 @@ def _people(conn) -> list[dict]:
             "ban_id": bans.get(owner),
         }
 
+    notifications = {
+        row["device_id"]: [
+            kind
+            for kind, on in (
+                ("me", row["notify_me"]),
+                ("friends", row["notify_friends"]),
+            )
+            if on
+        ]
+        for row in conn.execute("SELECT * FROM push_registrations")
+    }
     devices: dict[int | None, list[dict]] = defaultdict(list)
     for row in conn.execute(
         "SELECT * FROM devices ORDER BY last_seen DESC NULLS LAST, id DESC"
     ):
         devices[row["user_id"]].append(
             {key: row[key] for key in ("id", "label", "first_seen", "last_seen")}
-            | {"token": row["token"]}
+            | {"token": row["token"], "notifications": notifications.get(row["id"])}
         )
     people = []
     for user in conn.execute("SELECT * FROM users"):
@@ -1478,6 +1520,7 @@ def _people(conn) -> list[dict]:
                 email=None,
                 first_seen=device["first_seen"],
                 last_seen=device["last_seen"],
+                notifications=device["notifications"],
                 devices=[],
             )
         )
@@ -1710,6 +1753,157 @@ def delete_account(actor: ActorDep):
     if user["apple_refresh_token"]:
         apple.revoke(user["apple_refresh_token"])
     return _account_out(None)
+
+
+CarNumber = Annotated[str, Field(min_length=1, max_length=20)]
+
+
+class PushWatchIn(BaseModel):
+    event_id: int
+    event_date: date
+    me: CarNumber | None = None
+    friends: list[CarNumber] = Field(default_factory=list, max_length=50)
+
+
+class PushIn(BaseModel):
+    apns_token: str = Field(pattern=r"^[0-9a-fA-F]{32,200}$")
+    environment: Literal["production", "sandbox"]
+    notify_me: bool
+    notify_friends: bool
+    me_name: NameStr | None = None
+    friend_names: list[NameStr] = Field(default_factory=list, max_length=50)
+    watches: list[PushWatchIn] = Field(
+        default_factory=list, max_length=notify.MAX_WATCHES_PER_DEVICE
+    )
+
+
+def _device_row_id(conn, token: str) -> int:
+    _record_device(conn, token)
+    return conn.execute("SELECT id FROM devices WHERE token = ?", (token,)).fetchone()[
+        "id"
+    ]
+
+
+# The app sends its whole notification setup each time it changes: the APNs
+# token, which kinds it wants, and for each event from yesterday on, the car
+# marked ME and the pinned cars. The names are the people it last marked, which
+# is how it follows them into an event it has not opened yet. Turning both kinds
+# off forgets all of it.
+@app.put("/api/push")
+def set_push(body: PushIn, token: DeviceTokenDep):
+    today = gglc.today()
+    with db.session() as conn:
+        device_id = _device_row_id(conn, token)
+        conn.execute("DELETE FROM push_watches WHERE device_id = ?", (device_id,))
+        if not (body.notify_me or body.notify_friends):
+            conn.execute(
+                "DELETE FROM push_registrations WHERE device_id = ?", (device_id,)
+            )
+            return {"enabled": False, "watching": 0}
+        # A backup restored onto a new phone brings the old token along; only
+        # the newest registration keeps it.
+        conn.execute(
+            "DELETE FROM push_registrations WHERE apns_token = ? AND device_id != ?",
+            (body.apns_token, device_id),
+        )
+        conn.execute(
+            """INSERT INTO push_registrations
+                   (device_id, apns_token, environment, notify_me, notify_friends,
+                    me_name, friend_names, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT (device_id) DO UPDATE SET
+                   apns_token = excluded.apns_token,
+                   environment = excluded.environment,
+                   notify_me = excluded.notify_me,
+                   notify_friends = excluded.notify_friends,
+                   me_name = excluded.me_name,
+                   friend_names = excluded.friend_names,
+                   updated_at = excluded.updated_at""",
+            (
+                device_id,
+                body.apns_token,
+                body.environment,
+                int(body.notify_me),
+                int(body.notify_friends),
+                _clean(body.me_name),
+                json.dumps(sorted({n.strip() for n in body.friend_names} - {""})),
+            ),
+        )
+        live = [
+            watch
+            for watch in body.watches
+            if today - timedelta(days=1)
+            <= watch.event_date
+            <= today + timedelta(days=1)
+            and (watch.me or watch.friends)
+        ]
+        conn.executemany(
+            """INSERT OR REPLACE INTO push_watches
+                   (device_id, event_id, event_date, me, friends)
+               VALUES (?, ?, ?, ?, ?)""",
+            [
+                (
+                    device_id,
+                    watch.event_id,
+                    watch.event_date.isoformat(),
+                    watch.me,
+                    json.dumps(sorted(set(watch.friends))),
+                )
+                for watch in live
+            ],
+        )
+    return {"enabled": True, "watching": len(live)}
+
+
+# Checks the APNs key and one phone's registration end to end.
+@app.post("/api/admin/devices/{device_id}/test-push")
+def test_push(device_id: int, _: AdminDep):
+    with db.session() as conn:
+        registration = conn.execute(
+            "SELECT * FROM push_registrations WHERE device_id = ?", (device_id,)
+        ).fetchone()
+    if registration is None:
+        raise HTTPException(
+            status_code=404, detail="That phone has not turned notifications on"
+        )
+    payload = {
+        "aps": {
+            "alert": {
+                "title": "Test notification",
+                "body": "Notifications from AutoX Live are working.",
+            },
+            "sound": "default",
+        }
+    }
+    try:
+        result = push.try_send(
+            registration["apns_token"], registration["environment"], payload
+        )
+    except push.Gone as exc:
+        with db.session() as conn:
+            conn.execute(
+                "DELETE FROM push_registrations WHERE device_id = ?", (device_id,)
+            )
+        result = (
+            f"Apple no longer knows this phone ({exc}); its registration was removed"
+        )
+    return {"result": result}
+
+
+@app.delete("/api/push")
+def delete_push(token: DeviceTokenDep):
+    with db.session() as conn:
+        device = conn.execute(
+            "SELECT id FROM devices WHERE token = ?", (token,)
+        ).fetchone()
+        if device is not None:
+            conn.execute(
+                "DELETE FROM push_registrations WHERE device_id = ?", (device["id"],)
+            )
+            conn.execute(
+                "DELETE FROM push_watches WHERE device_id = ?", (device["id"],)
+            )
+    return {"enabled": False, "watching": 0}
 
 
 ACCELERATION_TEXT_FIELDS = ("vehicle", "driver", "notes")

@@ -3,5 +3,6 @@ fastapi
 uvicorn[standard]
 better-profanity
 pyjwt[crypto]
+httpx[http2]
 ruff
 pytest

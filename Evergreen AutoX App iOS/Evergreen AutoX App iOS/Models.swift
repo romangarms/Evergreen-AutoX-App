@@ -262,6 +262,46 @@ struct Account: Decodable {
     }
 }
 
+// Everything the server needs to send this phone new-time notifications,
+// sent whole each time any of it changes.
+struct PushSetup: Encodable, Equatable {
+    struct Watch: Encodable, Equatable {
+        let eventID: Int
+        let eventDate: String
+        let me: String?
+        let friends: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case eventID = "event_id"
+            case eventDate = "event_date"
+            case me, friends
+        }
+    }
+
+    let apnsToken: String
+    let environment: String
+    let notifyMe: Bool
+    let notifyFriends: Bool
+    let meName: String?
+    let friendNames: [String]
+    let watches: [Watch]
+
+    enum CodingKeys: String, CodingKey {
+        case apnsToken = "apns_token"
+        case environment
+        case notifyMe = "notify_me"
+        case notifyFriends = "notify_friends"
+        case meName = "me_name"
+        case friendNames = "friend_names"
+        case watches
+    }
+}
+
+struct PushStatus: Decodable {
+    let enabled: Bool
+    let watching: Int
+}
+
 struct AppleSignInInput: Encodable {
     let identityToken: String
     let nonce: String

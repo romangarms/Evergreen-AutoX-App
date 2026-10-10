@@ -128,14 +128,57 @@ final class AppModel {
         didSet { defaults.set(hiddenCourseIDs.sorted(), forKey: "hiddenCourseIDs") }
     }
     private var pinsByEvent: [String: [String]] {
-        didSet { defaults.set(pinsByEvent, forKey: "pinsByEvent") }
+        didSet {
+            defaults.set(pinsByEvent, forKey: "pinsByEvent")
+            refreshFollowedNames()
+            schedulePushSync()
+        }
     }
     private var nicknamesByEvent: [String: [String: String]] {
         didSet { defaults.set(nicknamesByEvent, forKey: "nicknamesByEvent") }
     }
     private var meNumberByEvent: [String: String] {
-        didSet { defaults.set(meNumberByEvent, forKey: "meNumberByEvent") }
+        didSet {
+            defaults.set(meNumberByEvent, forKey: "meNumberByEvent")
+            refreshFollowedNames()
+            schedulePushSync()
+        }
     }
+
+    // New-time notifications. The server is told the ME car and pins of each
+    // event from yesterday on, plus the names last marked so it can follow
+    // those people into an event this phone hasn't opened yet.
+    var notifyMe: Bool {
+        didSet {
+            defaults.set(notifyMe, forKey: "notifyMe")
+            schedulePushSync()
+        }
+    }
+    var notifyFriends: Bool {
+        didSet {
+            defaults.set(notifyFriends, forKey: "notifyFriends")
+            schedulePushSync()
+        }
+    }
+    var wantsNotifications: Bool { notifyMe || notifyFriends }
+    // Handed over by the app delegate each launch once iOS registers.
+    var pushToken: String? {
+        didSet { if pushToken != oldValue { schedulePushSync() } }
+    }
+    private var followedMeName: String? {
+        didSet { defaults.set(followedMeName, forKey: "followedMeName") }
+    }
+    private var followedFriendNames: [String] {
+        didSet { defaults.set(followedFriendNames, forKey: "followedFriendNames") }
+    }
+    private enum PushSync: Equatable {
+        case off
+        case on(PushSetup)
+    }
+    @ObservationIgnored private var sentPush: PushSync?
+    @ObservationIgnored private var pushSyncTask: Task<Void, Never>?
+    // An event a tapped notification asked for before the events had loaded.
+    @ObservationIgnored private var pendingEventID: Int?
 
     // Car numbers repeat across events, so pins/nicknames/ME are scoped to the
     // selected event rather than stored globally.
@@ -191,6 +234,10 @@ final class AppModel {
         meNumberByEvent = (defaults.dictionary(forKey: "meNumberByEvent") as? [String: String]) ?? [:]
         mePromptDismissedEvents = defaults.stringArray(forKey: "mePromptDismissedEvents") ?? []
         sessionChoice = (defaults.dictionary(forKey: "sessionChoice") as? [String: Int]) ?? [:]
+        notifyMe = defaults.bool(forKey: "notifyMe")
+        notifyFriends = defaults.bool(forKey: "notifyFriends")
+        followedMeName = defaults.string(forKey: "followedMeName")
+        followedFriendNames = defaults.stringArray(forKey: "followedFriendNames") ?? []
         migrateGlobalPersonalization()
     }
 
@@ -301,17 +348,22 @@ final class AppModel {
     var wantsLiveRefresh: Bool {
         guard let event = selectedEvent, event.source != .leaderboard,
               let start = event.startDate,
-              let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: .now)
+              let yesterday = Self.yesterday,
+              start.prefix(10) >= yesterday
         else { return false }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard start.prefix(10) >= formatter.string(from: yesterday) else { return false }
         return switch screen {
         case nil: tab == .live || tab == .friends
         case .driver, .compare: true
         default: false
         }
+    }
+    // yyyy-MM-dd, comparable with an event's startDate.
+    static var yesterday: String? {
+        guard let date = Calendar.current.date(byAdding: .day, value: -1, to: .now) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
     var me: Driver? { meNumber.flatMap(driver(number:)) }
 
@@ -502,10 +554,17 @@ final class AppModel {
                 .sorted { ($0.startDate ?? "") > ($1.startDate ?? "") }
                 + leaderboardEvents
             orgName = (try? await orgTask)?.name
+            // Event dates decide which marks the server is told about.
+            schedulePushSync()
+            let notified = pendingEventID.flatMap { id in events.first { $0.id == id }?.id }
+            pendingEventID = nil
             // Only an event the user opened is remembered; until then every
             // launch follows the newest one. A reload keeps what's on screen.
             let current = events.first { $0.id == selectedEventID }?.id
-            if let eventID = current ?? restorableEventID ?? defaultEventID {
+            if let notified {
+                switchToLive()
+                await selectEvent(notified)
+            } else if let eventID = current ?? restorableEventID ?? defaultEventID {
                 await selectEvent(eventID, remember: false)
             } else {
                 isLoading = false
@@ -954,6 +1013,104 @@ final class AppModel {
         if newScreen != screen { screen = newScreen }
         friendsScreen = newFriendsScreen
         drivers = loaded
+        refreshFollowedNames()
+    }
+
+    func openNotifiedEvent(_ eventID: Int) {
+        if events.contains(where: { $0.id == eventID }) {
+            openEvent(eventID)
+        } else {
+            pendingEventID = eventID
+        }
+    }
+
+    // Names come from the open event, the only one with drivers loaded, and
+    // only when it has marks; otherwise the last marked names stay, unless
+    // nothing is marked anywhere.
+    private func refreshFollowedNames() {
+        guard !drivers.isEmpty else { return }
+        guard me != nil || !pins.isEmpty else {
+            if meNumberByEvent.isEmpty && pinsByEvent.isEmpty {
+                setFollowedNames(me: nil, friends: [])
+            }
+            return
+        }
+        let friends = drivers
+            .filter { pins.contains($0.startNumber) && $0.startNumber != meNumber }
+            .map(\.name)
+        setFollowedNames(me: me?.name, friends: friends.sorted())
+    }
+
+    private func setFollowedNames(me: String?, friends: [String]) {
+        guard me != followedMeName || friends != followedFriendNames else { return }
+        followedMeName = me
+        followedFriendNames = friends
+        schedulePushSync()
+    }
+
+    private var pushWatches: [PushSetup.Watch] {
+        guard let yesterday = Self.yesterday else { return [] }
+        let watches = events.compactMap { event -> PushSetup.Watch? in
+            guard event.source != .leaderboard,
+                  let date = event.startDate.map({ String($0.prefix(10)) }),
+                  date >= yesterday
+            else { return nil }
+            let key = String(event.id)
+            let me = meNumberByEvent[key]
+            let friends = (pinsByEvent[key] ?? []).filter { $0 != me }
+            guard me != nil || !friends.isEmpty else { return nil }
+            return PushSetup.Watch(eventID: event.id, eventDate: date, me: me, friends: friends)
+        }
+        // The server takes at most 10; `events` is newest first.
+        return Array(watches.prefix(10))
+    }
+
+    // Changes come in bursts (a pin, then the names it changes), so they
+    // settle for a second and go as one request, and only when it differs
+    // from what the server already has.
+    func schedulePushSync() {
+        pushSyncTask?.cancel()
+        pushSyncTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await syncPush()
+        }
+    }
+
+    private func syncPush() async {
+        let wanted: PushSync
+        if wantsNotifications {
+            guard let pushToken else { return }
+            #if DEBUG
+            let environment = "sandbox"
+            #else
+            let environment = "production"
+            #endif
+            wanted = .on(PushSetup(
+                apnsToken: pushToken,
+                environment: environment,
+                notifyMe: notifyMe,
+                notifyFriends: notifyFriends,
+                meName: followedMeName,
+                friendNames: followedFriendNames,
+                watches: pushWatches
+            ))
+        } else {
+            // A phone that never turned them on has nothing to take back.
+            guard sentPush != nil || defaults.bool(forKey: "pushRegistered") else { return }
+            wanted = .off
+        }
+        guard wanted != sentPush else { return }
+        do {
+            switch wanted {
+            case .off: _ = try await client.clearPush()
+            case .on(let setup): _ = try await client.setPush(setup)
+            }
+            sentPush = wanted
+            defaults.set(wanted != .off, forKey: "pushRegistered")
+        } catch {
+            // Sent again with the next change or launch.
+        }
     }
 
     func pickSession(_ sessionID: Int) {

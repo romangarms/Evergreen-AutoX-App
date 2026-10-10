@@ -24,10 +24,14 @@ Usage: ./start.sh [command]
                  downloaded from the developer portal) so deleting an account
                  revokes its Apple sign-in. The key ID is read from the file
                  name unless given.
+  push-key FILE [KEY_ID]
+                 Store an Apple Push Notifications key (a .p8 from the
+                 developer portal with APNs enabled) so the server can send
+                 new-time notifications. Without one it sends none.
   help           Show this message.
 
 Credentials live in $ENV_FILE (gitignored) as LEADERBOARD_ADMIN_USER,
-LEADERBOARD_ADMIN_PASSWORD, LEADERBOARD_READ_KEY and the APPLE_ values. Restart
+LEADERBOARD_ADMIN_PASSWORD, LEADERBOARD_READ_KEY and the APPLE_ and APNS_ values. Restart
 the server after changing them.
 EOF
 }
@@ -99,10 +103,11 @@ ensure_read_key() {
     [ -n "$(env_value LEADERBOARD_READ_KEY)" ] || write_read_key
 }
 
-write_apple_key() {
-    local file=$1 key_id=$2 name tmp
+# Writes PREFIX_TEAM_ID, PREFIX_KEY_ID and PREFIX_PRIVATE_KEY for a .p8 key.
+write_key() {
+    local prefix=$1 command=$2 file=$3 key_id=$4 name tmp
     if [ -z "$file" ] || [ ! -f "$file" ]; then
-        echo "Usage: ./start.sh apple-key path/to/AuthKey_XXXXXXXXXX.p8 [KEY_ID]" >&2
+        echo "Usage: ./start.sh $command path/to/AuthKey_XXXXXXXXXX.p8 [KEY_ID]" >&2
         exit 1
     fi
     if ! openssl pkey -in "$file" -noout 2>/dev/null; then
@@ -119,12 +124,13 @@ write_apple_key() {
     fi
     tmp=$(mktemp)
     if [ -f "$ENV_FILE" ]; then
-        grep -v '^APPLE_\(TEAM_ID\|KEY_ID\|PRIVATE_KEY\)=' "$ENV_FILE" > "$tmp" || true
+        grep -v "^${prefix}_\\(TEAM_ID\\|KEY_ID\\|PRIVATE_KEY\\)=" "$ENV_FILE" > "$tmp" || true
     fi
     # The whole PEM, BEGIN and END lines included, on one line with a literal
-    # \n at each line break; server/apple.py turns those back into newlines.
-    printf "APPLE_TEAM_ID='%s'\nAPPLE_KEY_ID='%s'\nAPPLE_PRIVATE_KEY='%s'\n" \
-        "$APPLE_TEAM_ID_DEFAULT" "$key_id" "$(awk 'NF {printf "%s\\n", $0}' "$file")" >> "$tmp"
+    # \n at each line break; server/apple.py and push.py turn those back into
+    # newlines.
+    printf "%s_TEAM_ID='%s'\n%s_KEY_ID='%s'\n%s_PRIVATE_KEY='%s'\n" \
+        "$prefix" "$APPLE_TEAM_ID_DEFAULT" "$prefix" "$key_id" "$prefix" "$(awk 'NF {printf "%s\\n", $0}' "$file")" >> "$tmp"
     mv "$tmp" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "Saved key $key_id to $ENV_FILE. Restart the server to pick it up (./start.sh)."
@@ -182,7 +188,10 @@ case "${1:-start}" in
         echo "Restart the server (./start.sh), then rebuild the website with this key." >&2
         ;;
     apple-key)
-        write_apple_key "$2" "$3"
+        write_key APPLE apple-key "$2" "$3"
+        ;;
+    push-key)
+        write_key APNS push-key "$2" "$3"
         ;;
     help|-h|--help)
         usage

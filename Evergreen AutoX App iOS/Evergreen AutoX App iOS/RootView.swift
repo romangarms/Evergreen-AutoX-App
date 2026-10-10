@@ -20,6 +20,7 @@ struct RootView: View {
         // are already too small to shrink.
         .dynamicTypeSize(.large ... .xxxLarge)
         .modifier(AppleCredentialWatcher())
+        .modifier(PushNotificationWatcher())
         .task(id: scenePhase == .active && model.wantsLiveRefresh) {
             guard scenePhase == .active, model.wantsLiveRefresh else { return }
             while !Task.isCancelled {

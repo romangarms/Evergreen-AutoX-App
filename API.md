@@ -88,6 +88,8 @@ Approving, rejecting or deleting a submission deletes its photo.
 - `GET` / `PATCH` / `DELETE /api/account` — whether this device is signed in, change the account's `name`, or delete the account and everything it posted
 - `DELETE /api/account/session` — sign this device out
 - `POST /api/account/apple/notifications` — Apple's server-to-server endpoint (`payload`, a token Apple signs); a revoked or deleted Apple ID is signed out on every device
+- `PUT /api/push` — device token only: this phone's whole new-time notification setup (`apns_token`, `environment` of `production` or `sandbox`, `notify_me`, `notify_friends`, optional `me_name` and `friend_names`, and up to 10 `watches`, each `event_id` (a Speedhive event, or `-yyyymmdd` for GGLC), `event_date`, `me` and `friends` car numbers). Watches outside yesterday to tomorrow are dropped; both kinds off deletes everything. Answers `enabled` and how many events it is `watching`
+- `DELETE /api/push` — device token only: forget this phone's notification setup
 
 ## Admin
 
@@ -96,6 +98,7 @@ Approving, rejecting or deleting a submission deletes its photo.
 - `DELETE /api/admin/session` — clear that cookie in this browser
 - `GET /api/admin/users` — every account with its devices, and every device that has not signed in, with what each has posted, the boards it owns or has joined, and whether it is banned
 - `PATCH /api/admin/users/{user_id}` and `PATCH /api/admin/devices/{device_id}` — set a `label`
+- `POST /api/admin/devices/{device_id}/test-push` — send a test notification to a phone that turned notifications on; answers Apple's verdict as `result`
 - `POST /api/admin/devices/{device_id}/move` — file everything a signed-out device posted under an account (`user_id`)
 
 ## TrackAddict

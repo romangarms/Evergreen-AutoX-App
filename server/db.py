@@ -111,6 +111,26 @@ CREATE TABLE IF NOT EXISTS acceleration_entries (
     hidden INTEGER NOT NULL DEFAULT 0,
     owner_id TEXT
 );
+-- Notification settings are per phone, not per account: the ME car and pins
+-- they follow live only on that phone. Cleared with the device row.
+CREATE TABLE IF NOT EXISTS push_registrations (
+    device_id INTEGER PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    apns_token TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    notify_me INTEGER NOT NULL DEFAULT 0,
+    notify_friends INTEGER NOT NULL DEFAULT 0,
+    me_name TEXT,
+    friend_names TEXT,
+    updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS push_watches (
+    device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    event_id INTEGER NOT NULL,
+    event_date TEXT NOT NULL,
+    me TEXT,
+    friends TEXT NOT NULL,
+    PRIMARY KEY (device_id, event_id)
+);
 CREATE TABLE IF NOT EXISTS submissions (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL,
