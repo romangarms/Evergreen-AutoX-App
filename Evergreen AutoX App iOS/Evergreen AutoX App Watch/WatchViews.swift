@@ -256,7 +256,7 @@ private struct FriendRow: View {
                     .foregroundStyle(Color.egInk)
                 if !isMe {
                     // Red: they're ahead of you.
-                    Text(gap.map(LapTime.gap) ?? "—")
+                    Text(gap.map { LapTime.gap($0) } ?? "—")
                         .font(.system(size: 11))
                         .monospacedDigit()
                         .foregroundStyle(gap.map { $0 < 0 } == true ? Color.egAhead : Color.egGray)

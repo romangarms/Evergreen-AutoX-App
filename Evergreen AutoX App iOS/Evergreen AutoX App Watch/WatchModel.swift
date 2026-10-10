@@ -21,7 +21,8 @@ final class WatchModel {
             context = try? JSONDecoder().decode(WatchContext.self, from: data)
         }
         let link = WatchLink { [weak self] context in
-            Task { @MainActor in self?.apply(context) }
+            guard let self else { return }
+            Task { @MainActor in self.apply(context) }
         }
         self.link = link
         link.start()
