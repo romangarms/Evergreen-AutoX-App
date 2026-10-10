@@ -137,7 +137,7 @@ def _speedhive_cars(upstream: Upstream, event_id: int) -> list[Car]:
     return cars
 
 
-# Ranked the way the app ranks a GGLC page (gglcDrivers in AppModel.swift), so
+# Ranked the way the app ranks a GGLC page (gglcDrivers in SessionResults.swift), so
 # the positions and the P-numbers of cars without one match what it shows.
 def _gglc_cars(event: dict | None) -> list[Car]:
     if event is None:
