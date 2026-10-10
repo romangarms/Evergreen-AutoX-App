@@ -85,11 +85,17 @@ struct SettingsView: View {
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
                         .onTapGesture {
+                            guard !model.devMode else { return }
                             versionTaps += 1
+                            if versionTaps >= 7 {
+                                versionTaps = 0
+                                model.devMode = true
+                                Task { await model.loadEvents() }
+                            }
                         }
                 }
 
-                if model.devMode || versionTaps >= 7 {
+                if model.devMode {
                     devSection
                 }
             }
@@ -164,64 +170,48 @@ struct SettingsView: View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: 8) {
             sectionHeader("DEV")
-            Button {
-                model.devMode.toggle()
-                Task { await model.loadEvents() }
-            } label: {
-                HStack(spacing: 8) {
-                    EGCheckbox(checked: model.devMode, size: 18)
-                    Text("DEV MODE")
-                }
-            }
-            .buttonStyle(EGChipButtonStyle())
-            if model.devMode {
-                Text("Custom server base URL. Use your Mac's LAN IP when running on a phone; leave empty for the official server.")
-                    .egFont(11)
-                    .foregroundStyle(Color.egGrayDark)
-                    .fixedSize(horizontal: false, vertical: true)
-                TextField("http://192.168.1.10:8321", text: $model.customBaseURLString)
-                    .egFont(12)
-                    .monospaced()
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 8)
-                    .background(Color.egCard)
-                    .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
-                    .onSubmit {
-                        Task { await model.loadEvents() }
-                    }
-                Text("The device ID is what tells the server which leaderboards and runs are yours. Anyone who has it can edit them, so only paste it into the server console.")
-                    .egFont(11)
-                    .foregroundStyle(Color.egGrayDark)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {
-                    UIPasteboard.general.string = DeviceIdentity.token
-                    copiedDeviceID = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        copiedDeviceID = false
-                    }
-                }
-                .buttonStyle(EGButtonStyle())
-                Text("The admin dashboard opens the server's dev console on Submissions, where manual times wait for approval. It asks for the server's admin sign-in and stays signed in for 30 days.")
-                    .egFont(11)
-                    .foregroundStyle(Color.egGrayDark)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("ADMIN DASHBOARD") {
-                    adminDashboard = AdminDashboardLink(baseURLString: model.baseURLString)
-                }
-                .buttonStyle(EGButtonStyle())
-                .disabled(AdminDashboardLink(baseURLString: model.baseURLString) == nil)
-            }
-            Button("HIDE DEV MODE") {
-                let wasOn = model.devMode
-                model.devMode = false
-                versionTaps = 0
-                if wasOn {
+            Text("Custom server base URL. Use your Mac's LAN IP when running on a phone; leave empty for the official server.")
+                .egFont(11)
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("http://192.168.1.10:8321", text: $model.customBaseURLString)
+                .egFont(12)
+                .monospaced()
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .background(Color.egCard)
+                .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+                .onSubmit {
                     Task { await model.loadEvents() }
                 }
+            Text("The device ID is what tells the server which leaderboards and runs are yours. Anyone who has it can edit them, so only paste it into the server console.")
+                .egFont(11)
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(copiedDeviceID ? "COPIED" : "COPY DEVICE ID") {
+                UIPasteboard.general.string = DeviceIdentity.token
+                copiedDeviceID = true
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    copiedDeviceID = false
+                }
+            }
+            .buttonStyle(EGButtonStyle())
+            Text("The admin dashboard opens the server's dev console on Submissions, where manual times wait for approval. It asks for the server's admin sign-in and stays signed in for 30 days.")
+                .egFont(11)
+                .foregroundStyle(Color.egGrayDark)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("ADMIN DASHBOARD") {
+                adminDashboard = AdminDashboardLink(baseURLString: model.baseURLString)
+            }
+            .buttonStyle(EGButtonStyle())
+            .disabled(AdminDashboardLink(baseURLString: model.baseURLString) == nil)
+            Button("DISABLE DEV MODE") {
+                model.devMode = false
+                Task { await model.loadEvents() }
             }
             .buttonStyle(EGButtonStyle())
         }

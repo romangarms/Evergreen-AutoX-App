@@ -38,6 +38,10 @@ were not on the original wishlist and are up for debate.
 
 ### Apple Watch
 
+Done (Oct 2026), first cut: the two pages below, haptic tap included. The Watch fetches results from the
+server itself, using the event, ME car and pins the phone hands it, because the phone app stops
+refreshing once it is in a pocket. Still open: the complication / Smart Stack widget.
+
 Companion watchOS app per the design concept: two pages, swipe between them.
 
 - **Page 1, Last run**: latest time, cone/penalty string, best time, current position.
