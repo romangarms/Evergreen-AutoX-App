@@ -1,7 +1,8 @@
 # App Store Connect copy — AutoX Live
 
-Paste-ready text for App Store Connect. Character limits are Apple's; counts were checked when this was
-written, so re-check after editing.
+Paste-ready text for App Store Connect. Each block of copy is in a fenced `text` block with one line per
+paragraph, so it pastes without stray `>` marks or hard line breaks (on GitHub, use the block's copy
+button). Character limits are Apple's; counts were checked when this was written, so re-check after editing.
 
 ## Rename the app record first
 
@@ -17,15 +18,16 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 
 ## TestFlight → Test Information
 
+Current build: **1.5 (2)**. External testing sends the first build of each version through Beta App
+Review, so fill in all of this before adding the build to an external group.
+
 **Beta App Description** (testers see this on the invite)
 
-> AutoX Live puts autocross timing in your pocket. Open an event to see results as they post, star your
-> friends to follow just their runs and the gaps between you, compare any two drivers head-to-head, and post
-> your own best times to community leaderboards.
->
-> This is an early beta from an independent developer. It is not affiliated with any event organizer, club,
-> or timing provider. Results come from the organizers' public timing feeds, so an event shows up once its
-> organizer publishes it.
+```text
+AutoX Live puts autocross timing in your pocket. Open an event to see results as they post, with live results refreshing on their own during the event. Star your friends to follow just their runs and the gaps between you, compare any two drivers head-to-head, and post your own best times to community leaderboards.
+
+This is an early beta from an independent developer. It is not affiliated with any event organizer, club, or timing provider. Results come from the organizers' public timing feeds, so an event shows up once its organizer publishes it.
+```
 
 **Feedback Email:** romangarms@gmail.com
 **Marketing URL:** https://autox.romangarms.com/app
@@ -33,66 +35,50 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 
 **What to Test** (per build; edit for each upload)
 
-> Thanks for testing AutoX Live!
->
-> - Live tab: open the latest event, switch sessions, pull down to refresh. Do times and positions match
->   what you saw at the event?
-> - Star a few cars, pick This Is Me from one car's ••• menu, then check the Friends tab and the
->   head-to-head compare.
-> - Posting now needs Sign in with Apple. Sign in from Setup or the first time you post, pick a username if
->   asked, and check your posts are still yours after deleting and reinstalling the app.
-> - Boards tab: create a leaderboard or JOIN one with a code, post a time from a TrackAddict CSV, then
->   delete it.
-> - No log? On the Post a Time sheet tap NO LOG? USE A PHOTO, type the time and pick one photo as proof.
->   It should show as WAITING FOR REVIEW, only to you, until we approve it. Try withdrawing one too.
-> - Boards tab → Acceleration: if you have a TrackAddict drag-run log, post it with POST A TIME and check the
->   0-60 and quarter-mile numbers against what TrackAddict showed.
-> - Turn the system text size up (Settings → Display & Brightness → Text Size) and check nothing is cut off.
-> - Anything confusing, slow, or wrong: screenshot it in TestFlight and send feedback, or email
->   romangarms@gmail.com.
+```text
+Thanks for testing AutoX Live 1.5!
+
+New in this build:
+- Live results now refresh themselves every 10 seconds while you have an event open on race day, with no need to pull down. Leave a results page open during an event and check new runs and position changes appear on their own, and that a driver or compare screen you have open follows that driver when their position changes.
+- No log? On the Post a Time sheet tap NO LOG? USE A PHOTO, type the time and pick one photo as proof (a timing slip or the timer display). It shows as WAITING FOR REVIEW, only to you, until we approve it, then appears on the board as yours. Try withdrawing one too.
+
+Still worth checking:
+- Live tab: open the latest event and switch sessions. Do times and positions match what you saw at the event?
+- Star a few cars, pick This Is Me from one car's ••• menu, then check the Friends tab and the head-to-head compare.
+- Posting needs Sign in with Apple. Sign in from Setup or the first time you post, pick a username if asked, and check your posts are still yours after deleting and reinstalling the app.
+- Boards tab: create a leaderboard or JOIN WITH CODE, post a time from a TrackAddict CSV, then delete it.
+- Boards tab → Acceleration: if you have a TrackAddict drag-run log, post it with POST A TIME and check the 0-60 and quarter-mile numbers against what TrackAddict showed.
+- Turn the system text size up (Settings → Display & Brightness → Text Size) and check nothing is cut off.
+
+Anything confusing, slow, or wrong: screenshot it in TestFlight and send feedback, or email romangarms@gmail.com.
+```
 
 ### Beta App Review Information
 
-- **Sign-in required:** No (uncheck it; only posting needs Sign in with Apple, and the reviewer can use their own Apple ID).
+- **Sign-in required:** No (uncheck it; only posting needs Sign in with Apple, and the reviewer can use their
+  own Apple ID). No demo account is needed, so leave the username and password fields empty.
 - **Contact:** Roman Garms, romangarms@gmail.com, plus a phone number Apple can reach.
 - **Review Notes:**
 
-> AutoX Live shows autocross (cone-course time trial) results and lets drivers post times to community
-> leaderboards. Viewing everything works on first launch with no login. Posting a time or creating a
-> leaderboard requires Sign in with Apple (the only sign-in option), so that people keep edit access to
-> their posts on a new phone; any Apple ID works, no demo account is needed. Account deletion is on the
-> Setup tab under Account → Delete Account.
->
-> Where to look: the app opens on the newest event (Live tab). The Events tab lists all events, and its
-> "Community" section holds the user-created leaderboards. The Acceleration board at the top of that
-> section ranks 0-60 and quarter-mile times; users post to it by importing a drag-run log recorded with
-> the TrackAddict app, and it carries a notice that times are from drag strips and closed courses.
->
-> Without a log, a time can be typed in with one photo as proof ("NO LOG? USE A PHOTO" on the Post a
-> Time sheet), chosen with the system photo picker. That time is not published: it waits, with its
-> photo, for us to approve it, and shows on the board only to its poster as "WAITING FOR REVIEW". The
-> photo is never shown to other users and is deleted once reviewed.
->
-> A leaderboard's creator can mark it Unlisted (for a club or a group of friends). Unlisted leaderboards
-> are not shown in the list; people add one by tapping JOIN in the Community section and entering the
-> join code its creator shares. The same guidelines, reporting, and blocking apply to them. To try it,
-> create a leaderboard with Unlisted checked: its join code appears at the top of the leaderboard.
->
-> Data: event results are read from the organizers' publicly available timing results through our server
-> (autox.romangarms.com). The app is independent and says so on the Setup tab; organizer names appear
-> only as labels on their own events.
->
-> User-generated content: before their first post, users must accept community guidelines (no offensive
-> content, closed-course times only). Posts are filtered for objectionable language on the server. Every
-> leaderboard, run, and Acceleration entry has a Report action (… menu), reports go to a moderation queue we review within 24
-> hours, offending content is removed, and whoever posted it is banned from posting.
-> Users can block a poster from the same menu (Block Creator / Block Poster): that poster's leaderboards
-> and times disappear for them at once and we are notified. Blocks are listed, and can be undone, on the
-> Setup tab. Users can also hide any leaderboard on their device (… menu → Hide Leaderboard). Contact
-> details are on the Support page linked from the Setup tab.
->
-> The app requests no permissions in normal use. The local-network usage string exists only for a
-> developer option that points the app at a development server on the LAN.
+```text
+AutoX Live shows autocross (cone-course time trial) results and lets drivers post times to community leaderboards. Viewing everything works on first launch with no login. Posting a time or creating a leaderboard requires Sign in with Apple (the only sign-in option), so that people keep edit access to their posts on a new phone; any Apple ID works, no demo account is needed. Account deletion is on the Setup tab under Account → Delete Account.
+
+Where to look: the app opens on the newest event (Live tab). The Events tab lists all events. The Boards tab holds the user-created leaderboards. The Acceleration board at the top of that tab ranks 0-60 and quarter-mile times; users post to it by importing a drag-run log recorded with the TrackAddict app, and it carries a notice that times are from drag strips and closed courses.
+
+Live results: while an event dated today or yesterday is open, the results page reloads itself every 10 seconds so new runs appear without pulling to refresh. Our server caches each answer from the timing provider, so this does not add load on the organizers' feeds.
+
+Without a log, a time can be typed in with one photo as proof ("NO LOG? USE A PHOTO" on the Post a Time sheet), chosen with the system photo picker. That time is not published: it waits, with its photo, for us to approve it, and shows on the board only to its poster as "WAITING FOR REVIEW". The photo is never shown to other users and is deleted once reviewed.
+
+A leaderboard's creator can mark it Unlisted (for a club or a group of friends). Unlisted leaderboards are not shown in the list; people add one by tapping JOIN WITH CODE on the Boards tab and entering the join code its creator shares. The same guidelines, reporting, and blocking apply to them. To try it, create a leaderboard with Unlisted checked: its join code appears at the top of the leaderboard.
+
+Data: event results are read from the organizers' publicly available timing results through our server (autox.romangarms.com). The app is independent and says so on the Setup tab; organizer names appear only as labels on their own events.
+
+User-generated content: before their first post, users must accept community guidelines (no offensive content, closed-course times only). Posts are filtered for objectionable language on the server. Every leaderboard, run, and Acceleration entry has a Report action (… menu), reports go to a moderation queue we review within 24 hours, offending content is removed, and whoever posted it is banned from posting. Users can block a poster from the same menu (Block Creator / Block Poster): that poster's leaderboards and times disappear for them at once and we are notified. Blocks are listed, and can be undone, on the Setup tab. Users can also hide any leaderboard on their device (… menu → Hide Leaderboard). Contact details are on the Support page linked from the Setup tab.
+
+Developer options: a hidden DEV section on the Setup tab (opened by tapping the version line seven times) is for the developer only. It can point the app at a development server, and its Admin Dashboard button opens our server's moderation page in an in-app Safari view, which asks for the server's admin password; without that password it shows nothing beyond the public pages. It is how we approve photo submissions and review reports from a phone. Regular users have no reason to open it and nothing in it is needed to review the app.
+
+The app requests no permissions in normal use. The local-network usage string exists only for that developer option that points the app at a development server on the LAN.
+```
 
 ---
 
@@ -104,44 +90,42 @@ The bundle ID (`com.romangarms.Evergreen-AutoX-App-iOS`) stays; it is never show
 
 **Promotional Text** (170)
 
-> Follow autocross results as they post, pin your friends to see the gaps, compare runs head-to-head, and
-> post your best times to community leaderboards.
+```text
+Follow autocross results as they post, pin your friends to see the gaps, compare runs head-to-head, and post your best times to community leaderboards.
+```
 
 **Description** (4000)
 
-> AutoX Live puts autocross timing in your pocket. See results the moment they post, keep an eye on your
-> friends and rivals, and find out exactly where the time went.
->
-> LIVE RESULTS
-> • Open an event and see every car's best time, position, and run count
-> • Switch between sessions and pull to refresh between runs
-> • Tap any car for its run-by-run breakdown: best, average, spread, and every run
->
-> FRIENDS
-> • Star the cars you care about to get a short list of just your people
-> • Mark your own car to see your gap to everyone else
-> • Give cars nicknames, because "Silver BMW Coupe" is not a name
->
-> HEAD-TO-HEAD
-> • Compare any two drivers side by side
-> • Best, average, spread, and a chart of both drivers' times over the day
->
-> COMMUNITY LEADERBOARDS
-> • Create a leaderboard for your course, test day, or club
-> • Keep one unlisted and share its join code with just your group
-> • Post a time by hand or import it from a TrackAddict lap log
-> • Per-car entries with average and top speed
-> • Acceleration board: 0-60 and quarter-mile times from a TrackAddict drag-run log
-> • Report or hide anything that doesn't belong
->
-> NO ADS, NO TRACKING
-> Browse without an account; Sign in with Apple only when you want to post. Your pins, nicknames, and
-> settings stay on your phone.
->
-> AutoX Live is an independent app and is not affiliated with or endorsed by any event organizer, club,
-> or timing provider. Event results come from organizers' publicly available timing feeds and appear
-> when the organizer publishes them. Community leaderboards are for times set at sanctioned events or on
-> closed courses only.
+```text
+AutoX Live puts autocross timing in your pocket. See results the moment they post, keep an eye on your friends and rivals, and find out exactly where the time went.
+
+LIVE RESULTS
+• Open an event and see every car's best time, position, and run count
+• Results refresh on their own during the event, no pulling required
+• Tap any car for its run-by-run breakdown: best, average, spread, and every run
+
+FRIENDS
+• Star the cars you care about to get a short list of just your people
+• Mark your own car to see your gap to everyone else
+• Give cars nicknames, because "Silver BMW Coupe" is not a name
+
+HEAD-TO-HEAD
+• Compare any two drivers side by side
+• Best, average, spread, and a chart of both drivers' times over the day
+
+COMMUNITY LEADERBOARDS
+• Create a leaderboard for your course, test day, or club
+• Keep one unlisted and share its join code with just your group
+• Import a time from a TrackAddict lap log, or type it in with a photo for us to verify
+• Per-car entries with average and top speed
+• Acceleration board: 0-60 and quarter-mile times from a TrackAddict drag-run log
+• Report or hide anything that doesn't belong
+
+NO ADS, NO TRACKING
+Browse without an account; Sign in with Apple only when you want to post. Your pins, nicknames, and settings stay on your phone.
+
+AutoX Live is an independent app and is not affiliated with or endorsed by any event organizer, club, or timing provider. Event results come from organizers' publicly available timing feeds and appear when the organizer publishes them. Community leaderboards are for times set at sanctioned events or on closed courses only.
+```
 
 **Keywords** (100, comma-separated, no spaces; words already in the name are indexed for free)
 
