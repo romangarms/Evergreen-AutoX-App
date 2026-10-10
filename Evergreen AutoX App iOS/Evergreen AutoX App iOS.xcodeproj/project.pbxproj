@@ -6,8 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FAB0000C302EA7EB00F343EA /* Evergreen AutoX App Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = FAB00001302EA7EB00F343EA /* Evergreen AutoX App Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FAB0000D302EA7EB00F343EA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FAA786AA302EA7E900F343EA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAB00004302EA7EB00F343EA;
+			remoteInfo = "Evergreen AutoX App Watch";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FAB0000B302EA7EB00F343EA /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				FAB0000C302EA7EB00F343EA /* Evergreen AutoX App Watch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		FAA786B2302EA7E900F343EA /* Evergreen AutoX App iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Evergreen AutoX App iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAB00001302EA7EB00F343EA /* Evergreen AutoX App Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Evergreen AutoX App Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -18,6 +47,17 @@
 			);
 			target = FAA786B1302EA7E900F343EA /* Evergreen AutoX App iOS */;
 		};
+		FAB00003302EA7EB00F343EA /* Exceptions for "Evergreen AutoX App iOS" folder in "Evergreen AutoX App Watch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				APIClient.swift,
+				AppIcon.icon,
+				Models.swift,
+				SessionResults.swift,
+				WatchContext.swift,
+			);
+			target = FAB00004302EA7EB00F343EA /* Evergreen AutoX App Watch */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -25,14 +65,27 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				FAA786C0302EA7EB00F343EA /* Exceptions for "Evergreen AutoX App iOS" folder in "Evergreen AutoX App iOS" target */,
+				FAB00003302EA7EB00F343EA /* Exceptions for "Evergreen AutoX App iOS" folder in "Evergreen AutoX App Watch" target */,
 			);
 			path = "Evergreen AutoX App iOS";
+			sourceTree = "<group>";
+		};
+		FAB00002302EA7EB00F343EA /* Evergreen AutoX App Watch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Evergreen AutoX App Watch";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		FAA786AF302EA7E900F343EA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB00006302EA7EB00F343EA /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +99,7 @@
 			isa = PBXGroup;
 			children = (
 				FAA786B4302EA7E900F343EA /* Evergreen AutoX App iOS */,
+				FAB00002302EA7EB00F343EA /* Evergreen AutoX App Watch */,
 				FAA786B3302EA7E900F343EA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				FAA786B2302EA7E900F343EA /* Evergreen AutoX App iOS.app */,
+				FAB00001302EA7EB00F343EA /* Evergreen AutoX App Watch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,10 +123,12 @@
 				FAA786AE302EA7E900F343EA /* Sources */,
 				FAA786AF302EA7E900F343EA /* Frameworks */,
 				FAA786B0302EA7E900F343EA /* Resources */,
+				FAB0000B302EA7EB00F343EA /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FAB0000E302EA7EB00F343EA /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FAA786B4302EA7E900F343EA /* Evergreen AutoX App iOS */,
@@ -81,6 +138,28 @@
 			);
 			productName = "Evergreen AutoX App iOS";
 			productReference = FAA786B2302EA7E900F343EA /* Evergreen AutoX App iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FAB00004302EA7EB00F343EA /* Evergreen AutoX App Watch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAB00008302EA7EB00F343EA /* Build configuration list for PBXNativeTarget "Evergreen AutoX App Watch" */;
+			buildPhases = (
+				FAB00005302EA7EB00F343EA /* Sources */,
+				FAB00006302EA7EB00F343EA /* Frameworks */,
+				FAB00007302EA7EB00F343EA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FAB00002302EA7EB00F343EA /* Evergreen AutoX App Watch */,
+			);
+			name = "Evergreen AutoX App Watch";
+			packageProductDependencies = (
+			);
+			productName = "Evergreen AutoX App Watch";
+			productReference = FAB00001302EA7EB00F343EA /* Evergreen AutoX App Watch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -94,6 +173,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					FAA786B1302EA7E900F343EA = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					FAB00004302EA7EB00F343EA = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -113,12 +195,20 @@
 			projectRoot = "";
 			targets = (
 				FAA786B1302EA7E900F343EA /* Evergreen AutoX App iOS */,
+				FAB00004302EA7EB00F343EA /* Evergreen AutoX App Watch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		FAA786B0302EA7E900F343EA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB00007302EA7EB00F343EA /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +225,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FAB00005302EA7EB00F343EA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FAB0000E302EA7EB00F343EA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAB00004302EA7EB00F343EA /* Evergreen AutoX App Watch */;
+			targetProxy = FAB0000D302EA7EB00F343EA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		FAA786BB302EA7EB00F343EA /* Debug */ = {
@@ -338,6 +443,68 @@
 			};
 			name = Release;
 		};
+		FAB00009302EA7EB00F343EA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 98GQ88N9TN;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "AutoX Live";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.romangarms.Evergreen-AutoX-App-iOS";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.romangarms.Evergreen-AutoX-App-iOS.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		FAB0000A302EA7EB00F343EA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 98GQ88N9TN;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "AutoX Live";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.romangarms.Evergreen-AutoX-App-iOS";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.romangarms.Evergreen-AutoX-App-iOS.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -355,6 +522,15 @@
 			buildConfigurations = (
 				FAA786BE302EA7EB00F343EA /* Debug */,
 				FAA786BF302EA7EB00F343EA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FAB00008302EA7EB00F343EA /* Build configuration list for PBXNativeTarget "Evergreen AutoX App Watch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAB00009302EA7EB00F343EA /* Debug */,
+				FAB0000A302EA7EB00F343EA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

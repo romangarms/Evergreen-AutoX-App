@@ -44,11 +44,6 @@ final class AppModel {
         Int(date.replacingOccurrences(of: "-", with: "")).map { -$0 }
     }
 
-    static func gglcDate(eventID: Int) -> String {
-        let digits = String(-eventID)
-        return "\(digits.prefix(4))-\(digits.dropFirst(4).prefix(2))-\(digits.suffix(2))"
-    }
-
     // Leaderboard courses share the negative ID space with GGLC's -yyyymmdd,
     // so they're offset past any representable date.
     static func leaderboardEventID(courseID: Int) -> Int {
@@ -818,37 +813,6 @@ final class AppModel {
         [SHSession(id: eventID, name: "Results", type: nil, startTime: nil, resultStatus: nil)]
     }
 
-    private static func gglcDrivers(_ event: GGLCEvent) -> [Driver] {
-        let ranked = event.classes
-            .flatMap { klass in
-                klass.drivers.map { driver in
-                    (
-                        driver: driver,
-                        carClass: driver.carClass.isEmpty ? klass.name : driver.carClass,
-                        best: driver.runs.compactMap(\.total).min()
-                    )
-                }
-            }
-            .sorted {
-                switch ($0.best, $1.best) {
-                case let (a?, b?): a < b
-                case (.some, nil): true
-                case (nil, .some): false
-                case (nil, nil): $0.driver.name < $1.driver.name
-                }
-            }
-        var classCounts: [String: Int] = [:]
-        return ranked.enumerated().map { index, entry in
-            classCounts[entry.carClass, default: 0] += 1
-            return Driver(
-                position: index + 1,
-                gglc: entry.driver,
-                carClass: entry.carClass,
-                positionInClass: classCounts[entry.carClass]
-            )
-        }
-    }
-
     // Loads overlap when the user taps around faster than the network; after
     // every await, a load whose event or session is no longer the selected
     // one stops without touching state.
@@ -894,7 +858,7 @@ final class AppModel {
         errorMessage = nil
         lastSessionLoad = .now
         do {
-            let loaded = try await fetchDrivers(sessionID: sessionID)
+            let loaded = try await client.drivers(sessionID: sessionID)
             guard selectedSessionID == sessionID else { return }
             show(loaded)
         } catch {
@@ -915,25 +879,11 @@ final class AppModel {
            selectedEventID == eventID, fetched != sessions {
             sessions = fetched
         }
-        guard let loaded = try? await fetchDrivers(sessionID: sessionID),
+        guard let loaded = try? await client.drivers(sessionID: sessionID),
               selectedSessionID == sessionID
         else { return }
         show(loaded)
         errorMessage = nil
-    }
-
-    private func fetchDrivers(sessionID: Int) async throws -> [Driver] {
-        if sessionID < 0 {
-            let event = try await client.gglcEvent(date: Self.gglcDate(eventID: sessionID))
-            return Self.gglcDrivers(event)
-        }
-        async let resultsTask = client.results(sessionID: sessionID)
-        async let lapsTask = client.laps(sessionID: sessionID)
-        let (results, lapsRows) = try await (resultsTask, lapsTask)
-        let lapsByPosition = Dictionary(lapsRows.compactMap { row in row.position.map { ($0, row.laps ?? []) } }) { first, _ in first }
-        return results
-            .map { Driver(result: $0, laps: lapsByPosition[$0.position ?? -1] ?? []) }
-            .sorted { $0.position < $1.position }
     }
 
     // Screens name a driver by position, which a new time can change while

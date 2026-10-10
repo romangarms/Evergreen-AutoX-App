@@ -7,6 +7,9 @@ struct ContentView: View {
         RootView()
             .environment(model)
             .task { await model.start() }
+            .onChange(of: model.watchContext, initial: true) { _, context in
+                WatchSync.shared.send(context)
+            }
     }
 }
 
