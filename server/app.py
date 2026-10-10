@@ -18,10 +18,11 @@ import cache
 import db
 import gglc
 import moderation
+import ratelimit
 import trackaddict
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import (
     HTTPAuthorizationCredentials,
     HTTPBasic,
@@ -272,6 +273,70 @@ def require_device_token(
     if bearer is None or not DEVICE_TOKEN.match(bearer.credentials):
         raise HTTPException(status_code=401, detail="Device token required")
     return bearer.credentials
+
+
+def _admin_request(request: Request) -> bool | None:
+    """True for a valid admin login, False for a wrong one, None for neither."""
+    scheme, _, encoded = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "basic":
+        try:
+            user, _, password = base64.b64decode(encoded).decode().partition(":")
+        except (binascii.Error, UnicodeDecodeError):
+            return False
+        return bool(
+            ADMIN_PASSWORD
+            and secrets.compare_digest(user.encode(), ADMIN_USER.encode())
+            and secrets.compare_digest(password.encode(), ADMIN_PASSWORD.encode())
+        )
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if cookie is not None and _session_valid(request, cookie):
+        return True
+    return None
+
+
+# Per caller address, (limit, seconds). Reads stay unlimited: a whole event's
+# phones can share one venue or carrier address, and the cache absorbs them.
+LOGIN_LIMIT = (10, 15 * 60)
+SUBMISSION_LIMIT = (20, 60 * 60)
+WRITE_LIMIT = (30, 60)
+LOGIN_PATHS = {"/api/admin/session", "/api/account/apple"}
+# Apple's servers, not a person, call this one.
+UNLIMITED_PATHS = {"/api/account/apple/notifications"}
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    path = request.url.path
+    admin = _admin_request(request)
+    buckets = []
+    if admin is False or (path in LOGIN_PATHS and request.method == "POST"):
+        # A wrong admin password counts against logins wherever it is sent.
+        buckets.append(("login", *LOGIN_LIMIT))
+    elif (
+        not admin
+        and request.method not in ("GET", "HEAD", "OPTIONS")
+        and path.startswith("/api/")
+        and path not in UNLIMITED_PATHS
+    ):
+        if path == "/api/submissions":
+            buckets.append(("submission", *SUBMISSION_LIMIT))
+        buckets.append(("write", *WRITE_LIMIT))
+    if buckets:
+        key = ratelimit.client_key(
+            request.client.host if request.client else None,
+            request.headers.get("x-forwarded-for"),
+        )
+        for bucket, limit, window in buckets:
+            wait = ratelimit.hit(bucket, key, limit, window)
+            if wait is not None:
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": "Too many requests. Try again in a little while."
+                    },
+                    headers={"Retry-After": str(max(1, round(wait)))},
+                )
+    return await call_next(request)
 
 
 ActorDep = Annotated[Actor, Depends(get_actor)]
