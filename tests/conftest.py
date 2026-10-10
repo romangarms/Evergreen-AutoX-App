@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "server"))
 
 import app
 import db
+import ratelimit
 from fastapi.testclient import TestClient
 
 DATA = Path(__file__).parent / "data"
@@ -23,6 +24,7 @@ DATA = Path(__file__).parent / "data"
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "leaderboard.db")
+    ratelimit.clear()
     return TestClient(app.app)
 
 

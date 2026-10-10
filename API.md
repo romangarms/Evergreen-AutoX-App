@@ -2,6 +2,8 @@
 
 Everything the server in `server/app.py` answers. Reads are public unless noted; who may write is covered in the README's [Leaderboard auth](README.md#leaderboard-auth). Responses never carry a device token or an Apple identifier: a device is named by its row id, an account by its user id, and ownership shows up only as `is_owner` and `has_owner`.
 
+Writes are rate limited per caller address (`rate_limit` in `server/app.py`): 30 a minute, 20 photo submissions an hour, and 10 logins (`POST /api/admin/session`, `POST /api/account/apple`, or a wrong admin password anywhere) per 15 minutes. Past that the answer is 429 with `Retry-After`. Reads, the admin, and Apple's notifications are not limited.
+
 ## Speedhive
 
 - `GET /api/orgs/{org_id}` — org info
