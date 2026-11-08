@@ -12,8 +12,8 @@ val releaseProperties = Properties().apply {
 
 // versionCode = major * 10000 + minor * 100 + build, so every build of every
 // version sorts after the one before it; bump-version.sh rewrites these two.
-val appVersionName = "2.0"
-val appBuild = 3
+val appVersionName = "2.1"
+val appBuild = 1
 val appVersionCode = appVersionName.split(".").let { parts ->
     parts[0].toInt() * 10000 + parts.getOrElse(1) { "0" }.toInt() * 100 + appBuild
 }
