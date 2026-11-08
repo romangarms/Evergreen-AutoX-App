@@ -679,25 +679,32 @@ final class AppModel {
         }
     }
 
-    // GGLC failures only cost the extra events; Speedhive stays usable.
+    // GGLC failures only cost the extra events; Speedhive stays usable. A
+    // year that doesn't load keeps the events already shown for it, so a
+    // dropout never takes an event (or the one on screen) away.
     private func loadGGLCEvents() async -> (events: [SHEvent], age: DataAge?) {
         let year = Calendar.current.component(.year, from: .now)
         async let current = fetch { try await $0.gglcEvents(year: year) }
         async let previous = fetch { try await $0.gglcEvents(year: year - 1) }
-        let years = [try? await current, try? await previous].compactMap { $0 }
-        let stubs = years.flatMap(\.value)
-        let events = stubs.compactMap { stub in
-            Self.gglcEventID(date: stub.date).map {
-                SHEvent(
-                    id: $0,
-                    name: "GGLC Autocross",
-                    startDate: stub.date,
-                    location: SHLocation(name: "Golden Gate Lotus Club", lengthLabel: nil),
-                    source: .gglc
-                )
+        let years = [(year, try? await current), (year - 1, try? await previous)]
+        let shown = self.events.filter { $0.source == .gglc }
+        let gglcEvents = years.flatMap { listYear, loaded -> [SHEvent] in
+            guard let loaded else {
+                return shown.filter { $0.startDate?.hasPrefix("\(listYear)-") == true }
+            }
+            return loaded.value.compactMap { stub in
+                Self.gglcEventID(date: stub.date).map {
+                    SHEvent(
+                        id: $0,
+                        name: "GGLC Autocross",
+                        startDate: stub.date,
+                        location: SHLocation(name: "Golden Gate Lotus Club", lengthLabel: nil),
+                        source: .gglc
+                    )
+                }
             }
         }
-        return (events, Self.combined(years.map(\.age)))
+        return (gglcEvents, Self.combined(years.map { $0.1?.age }))
     }
 
     // Like GGLC, leaderboard failures only cost the extra rows. Nil means

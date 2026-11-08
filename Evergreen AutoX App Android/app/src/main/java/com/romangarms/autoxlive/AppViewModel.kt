@@ -246,24 +246,29 @@ class AppViewModel(
 
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
-    // GGLC failures only cost the extra events; Speedhive stays usable.
+    // GGLC failures only cost the extra events; Speedhive stays usable. A
+    // year that doesn't load keeps the events already shown for it, so a
+    // dropout never takes an event (or the one on screen) away.
     private suspend fun loadGGLCEvents(): Pair<List<SHEvent>, DataAge?> = coroutineScope {
         val year = today().year
         val thisYear = async { runCatching { fetch { gglcEvents(year) } }.getOrNull() }
         val lastYear = async { runCatching { fetch { gglcEvents(year - 1) } }.getOrNull() }
-        val years = listOfNotNull(thisYear.await(), lastYear.await())
-        val events = years.flatMap { it.first }.mapNotNull { stub ->
-            AppState.gglcEventId(stub.date)?.let { id ->
-                SHEvent(
-                    id = id,
-                    name = "GGLC Autocross",
-                    startDate = stub.date,
-                    location = SHLocation(name = "Golden Gate Lotus Club"),
-                    source = EventSource.GGLC,
-                )
-            }
+        val years = listOf(year to thisYear.await(), year - 1 to lastYear.await())
+        val shown = current.events.filter { it.source == EventSource.GGLC }
+        val events = years.flatMap { (listYear, loaded) ->
+            loaded?.first?.mapNotNull { stub ->
+                AppState.gglcEventId(stub.date)?.let { id ->
+                    SHEvent(
+                        id = id,
+                        name = "GGLC Autocross",
+                        startDate = stub.date,
+                        location = SHLocation(name = "Golden Gate Lotus Club"),
+                        source = EventSource.GGLC,
+                    )
+                }
+            } ?: shown.filter { it.startDate?.startsWith("$listYear-") == true }
         }
-        events to AppState.combined(years.map { it.second })
+        events to AppState.combined(years.map { it.second?.second })
     }
 
     // Like GGLC, leaderboard failures only cost the extra rows. Null means

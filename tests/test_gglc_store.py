@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace
 
 import cache
 import gglc
@@ -35,7 +36,7 @@ def gglc_site(client, monkeypatch):
     )
     monkeypatch.setattr(gglc, "today", lambda: TODAY)
     cache.clear()
-    for name in ("_event_cache", "_saved"):
+    for name in ("_event_cache", "_saved", "_shrunk_since"):
         monkeypatch.setattr(gglc, name, {})
     for name in ("_found", "_missing"):
         monkeypatch.setattr(gglc, name, set())
@@ -48,7 +49,11 @@ def gglc_site(client, monkeypatch):
         gglc._event_cache.clear()
         gglc._found.clear()
 
+    def put(day, html):
+        pages[gglc.event_url(day)] = html
+
     publish.take_down = take_down
+    publish.put = put
     return publish
 
 
@@ -80,6 +85,63 @@ def test_todays_event_is_saved_but_still_refetched(client, gglc_site):
     assert (
         gglc.fetch_event(TODAY)["classes"][0]["drivers"][0]["runs"][0]["time"] == 58.0
     )
+
+
+# Every cell from "Run 1" on, which includes the page's Best column.
+FULL = ["67.639", "59.016", "59.016"]
+SHORT = ["59.016", "59.016"]
+
+
+def _runs(event):
+    return [run["raw"] for run in event["classes"][0]["drivers"][0]["runs"]]
+
+
+def test_a_page_caught_mid_update_keeps_the_saved_results(client, gglc_site):
+    gglc_site(PAST)
+    gglc_site(TODAY)
+    for day in (PAST, TODAY):
+        gglc.fetch_event(day)
+
+    # GGLC's page mid-upload: the title is there, the tables are not.
+    for day in (PAST, TODAY):
+        gglc_site.put(day, "<h1>GGLC Autocross Result</h1>")
+        assert _runs(gglc.fetch_event(day)) == FULL
+    assert [e["date"] for e in gglc.list_events(2026)] == [
+        TODAY.isoformat(),
+        PAST.isoformat(),
+    ]
+
+
+def test_a_shorter_page_wins_only_once_it_stays_short(client, gglc_site, monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(gglc, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    gglc_site(TODAY)
+    gglc.fetch_event(TODAY)
+
+    gglc_site(TODAY, run1="")
+    assert _runs(gglc.fetch_event(TODAY)) == FULL
+    clock[0] += gglc.SHRINK_GRACE - 1
+    assert _runs(gglc.fetch_event(TODAY)) == FULL
+    clock[0] += 1
+    assert _runs(gglc.fetch_event(TODAY)) == SHORT
+    # The correction is saved, so it is what a later dropout falls back to.
+    gglc_site.take_down(TODAY)
+    assert _runs(gglc.fetch_event(TODAY)) == SHORT
+
+
+def test_a_failed_probe_does_not_fail_the_list(client, gglc_site, monkeypatch):
+    gglc_site(PAST)
+    gglc.fetch_event(PAST)
+
+    def down(request):
+        raise httpx.ConnectError("GGLC is down")
+
+    monkeypatch.setattr(
+        gglc, "_http", httpx.Client(transport=httpx.MockTransport(down))
+    )
+    assert [e["date"] for e in gglc.list_events(2026)] == [PAST.isoformat()]
+    # Days it couldn't ask about are asked again next time, not written off.
+    assert gglc._missing == set()
 
 
 def _cell(text, best=False):

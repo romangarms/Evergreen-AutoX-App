@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
@@ -242,12 +243,41 @@ def fetch_event(day: date) -> dict | None:
             parsed for t in parser.tables if (parsed := _parse_table(t)) is not None
         ],
     }
+    if stored is not None and not _replaces(day, event, stored[0]):
+        return stored[0]
     if has_results(event):
         final = day < today()
         save_event(event, "gglc", final)
         if final:
             _event_cache[day] = event
     return event
+
+
+# GGLC rewrites the page in place while it updates it, so a poll can catch it
+# empty or cut short. A page with no results never replaces saved ones, and one
+# with fewer runs than the saved copy only does once it has stayed short this
+# long (a real correction), so a half-uploaded page never blanks the event.
+SHRINK_GRACE = 120
+_shrunk_since: dict[date, float] = {}
+
+
+def _run_count(event: dict) -> int:
+    return sum(
+        len(driver["runs"]) for klass in event["classes"] for driver in klass["drivers"]
+    )
+
+
+def _replaces(day: date, event: dict, saved: dict) -> bool:
+    if not has_results(event):
+        return False
+    if _run_count(event) >= _run_count(saved):
+        _shrunk_since.pop(day, None)
+        return True
+    now = time.monotonic()
+    if now - _shrunk_since.setdefault(day, now) < SHRINK_GRACE:
+        return False
+    _shrunk_since.pop(day, None)
+    return True
 
 
 _found: set[date] = set()
@@ -279,6 +309,13 @@ def _is_listable(day: date) -> bool:
     return event is not None and has_results(event)
 
 
+def _probe(day: date) -> int | None:
+    try:
+        return _http.head(event_url(day)).status_code
+    except httpx.HTTPError:
+        return None
+
+
 def list_events(year: int) -> list[dict]:
     stored = _stored_days(year)
     with _probe_lock:
@@ -289,13 +326,13 @@ def list_events(year: int) -> list[dict]:
         ]
         if to_probe:
             with ThreadPoolExecutor(max_workers=8) as pool:
-                statuses = pool.map(
-                    lambda d: _http.head(event_url(d)).status_code, to_probe
-                )
+                statuses = list(pool.map(_probe, to_probe))
+            # A day whose probe failed is neither found nor missing, so the
+            # next listing asks again instead of the whole list failing.
             for day, code in zip(to_probe, statuses):
                 if code == 200:
                     _found.add(day)
-                elif day < today():
+                elif code == 404 and day < today():
                     _missing.add(day)
         days = sorted({d for d in _found if d.year == year} | stored, reverse=True)
     with ThreadPoolExecutor(max_workers=8) as pool:
