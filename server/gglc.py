@@ -107,6 +107,19 @@ def _parse_run(number: int, cell: dict) -> dict | None:
     }
 
 
+# The sheet's run columns are not one per run: the morning block can have more
+# columns than anyone used (2026-11-08 had Run 1-10, then the afternoon's Run 1-6
+# beside it). A driver's runs are numbered in the order they appear, skipping
+# blank cells, and `column` keeps the cell's position among the run columns so
+# the compare view can still line two drivers' morning and afternoon runs up.
+# Saved copies from before this carried the position in `run`.
+def _renumber(runs: list[dict]) -> list[dict]:
+    return [
+        {**run, "run": number, "column": run.get("column", run["run"])}
+        for number, run in enumerate(runs, 1)
+    ]
+
+
 def _parse_table(table: list) -> dict | None:
     if len(table) < 2 or not table[0]:
         return None
@@ -127,11 +140,13 @@ def _parse_table(table: list) -> dict | None:
     for row in table[2:]:
         texts = [c["text"].strip() for c in row]
         indexed = col(texts, "Indexed")
-        runs = [
-            run
-            for i, cell in enumerate(row[run_start:])
-            if (run := _parse_run(i + 1, cell)) is not None
-        ]
+        runs = _renumber(
+            [
+                run
+                for i, cell in enumerate(row[run_start:])
+                if (run := _parse_run(i + 1, cell)) is not None
+            ]
+        )
         totals = [run["total"] for run in runs if run["total"] is not None]
         # GGLC only scores the first 5 runs (the lightgreen cell); we rank by
         # best of all runs and keep the scored one as "official".
@@ -176,7 +191,14 @@ def _stored(day: date) -> tuple[dict, bool] | None:
         row = conn.execute(
             "SELECT event, final FROM gglc_events WHERE date = ?", (day.isoformat(),)
         ).fetchone()
-    return (json.loads(row["event"]), bool(row["final"])) if row else None
+    if row is None:
+        return None
+    event = json.loads(row["event"])
+    # Copies saved before runs were renumbered still carry column positions.
+    for klass in event["classes"]:
+        for driver in klass["drivers"]:
+            driver["runs"] = _renumber(driver["runs"])
+    return event, bool(row["final"])
 
 
 def _stored_days(year: int) -> set[date]:

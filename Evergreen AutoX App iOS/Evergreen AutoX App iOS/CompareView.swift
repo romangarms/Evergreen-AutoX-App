@@ -130,9 +130,10 @@ struct CompareView: View {
             }
             .padding(.bottom, 6)
 
-            ForEach(0..<max(a.runs.count, b.runs.count), id: \.self) { index in
-                let runA = index < a.runs.count ? a.runs[index] : nil
-                let runB = index < b.runs.count ? b.runs[index] : nil
+            let slots = runSlots(a, b)
+            ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
+                let runA = a.runs.first { $0.slot == slot }
+                let runB = b.runs.first { $0.slot == slot }
                 let gap: Double? = if let runA, let runB, !runA.dnf, !runB.dnf { runA.seconds - runB.seconds } else { nil }
 
                 HStack(spacing: 8) {
@@ -190,11 +191,18 @@ struct CompareView: View {
     }
 }
 
+/// The places runs line up in when two drivers are compared: every sheet
+/// column (or run number) either driver used, in order. A driver who used more
+/// of GGLC's morning columns would otherwise push the other's afternoon runs
+/// against their own morning ones.
+func runSlots(_ a: Driver, _ b: Driver?) -> [Int] {
+    Set(a.runs.map(\.slot) + (b?.runs.map(\.slot) ?? [])).sorted()
+}
+
 /// The "times over the day" line chart: one driver's timed runs in red, and
 /// optionally a second driver's as a dashed ink line (the compare view).
-/// Runs are placed by their order in the driver's list, not by run number,
-/// because run numbers can skip (laps filtered out as grid laps keep their
-/// numbers), and that left points past the last axis label.
+/// Runs are placed in the slots from `runSlots`, so a lone driver's runs sit
+/// one per slot in order and a comparison lines up like its run-by-run list.
 struct RunTimesChart: View {
     let primary: Driver
     var secondary: Driver?
@@ -204,30 +212,23 @@ struct RunTimesChart: View {
         let seconds: Double
     }
 
-    private static func points(_ driver: Driver?) -> [Point] {
+    private static func points(_ driver: Driver?, in slots: [Int]) -> [Point] {
         guard let driver else { return [] }
-        return driver.runs.enumerated().compactMap { index, run in
-            run.dnf ? nil : Point(id: index + 1, seconds: run.seconds)
+        return driver.runs.compactMap { run in
+            guard !run.dnf, let index = slots.firstIndex(of: run.slot) else { return nil }
+            return Point(id: index + 1, seconds: run.seconds)
         }
-    }
-
-    /// A lone driver's own run numbers label the slots, so they match the runs
-    /// table; a comparison counts slots, like its run-by-run list.
-    private func label(_ slot: Int) -> String {
-        if secondary == nil, slot <= primary.runs.count {
-            return "R\(primary.runs[slot - 1].number)"
-        }
-        return "R\(slot)"
     }
 
     var body: some View {
-        let mine = Self.points(primary)
-        let others = Self.points(secondary)
+        let slots = runSlots(primary, secondary)
+        let mine = Self.points(primary, in: slots)
+        let others = Self.points(secondary, in: slots)
         let all = (mine + others).map(\.seconds)
         let lo = all.min() ?? 0
         let hi = all.max() ?? 1
         let pad = max((hi - lo) * 0.18, 0.25)
-        let runCount = max(primary.runs.count, secondary?.runs.count ?? 0, 1)
+        let runCount = max(slots.count, 1)
 
         return Chart {
             ForEach(mine) { point in
@@ -262,7 +263,7 @@ struct RunTimesChart: View {
             AxisMarks(values: (1...runCount).map(Double.init)) { value in
                 AxisValueLabel {
                     if let n = value.as(Double.self) {
-                        Text(label(Int(n)))
+                        Text("R\(Int(n))")
                             .egFont(8.5, weight: .heavy)
                             .foregroundStyle(Color.egGray)
                     }

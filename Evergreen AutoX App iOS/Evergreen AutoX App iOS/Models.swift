@@ -111,6 +111,9 @@ struct GGLCRun: Codable {
     let dnf: Bool
     let total: Double?
     let best: Bool
+    // The run's position among the sheet's run columns (runs are numbered
+    // skipping blank cells); missing from older servers.
+    var column: Int?
 
     // The live page shows 0.000 for a car still on course. The server drops
     // those now, but saved and older answers can carry one, and it is no time.
@@ -590,7 +593,12 @@ struct Run: Identifiable {
     var cones = 0
     // A DNF has no time; `seconds` is 0 and it stays out of every statistic.
     var dnf = false
+    // Where the run sits on the GGLC sheet, so the compare view can line up
+    // two drivers' morning and afternoon runs even when one used more of the
+    // morning's columns. Other sources line up by run number.
+    var column: Int?
 
+    var slot: Int { column ?? number }
     var id: Int { lapNumber }
     var timeString: String { dnf ? "DNF" : LapTime.format(seconds) }
 }
@@ -660,10 +668,10 @@ struct Driver: Identifiable {
         bestTimeString = nil
         runs = gglc.runs.compactMap { run in
             if run.dnf {
-                return Run(number: run.run, lapNumber: run.run, seconds: 0, speed: nil, timeOfDay: nil, dnf: true)
+                return Run(number: run.run, lapNumber: run.run, seconds: 0, speed: nil, timeOfDay: nil, dnf: true, column: run.column)
             }
             guard let total = run.score else { return nil }
-            return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil, cones: run.cones)
+            return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil, cones: run.cones, column: run.column)
         }
     }
 

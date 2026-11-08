@@ -102,6 +102,9 @@ data class GGLCRun(
     val dnf: Boolean,
     val total: Double? = null,
     val best: Boolean,
+    // The run's position among the sheet's run columns (runs are numbered
+    // skipping blank cells); missing from older servers.
+    val column: Int? = null,
 ) {
     // The live page shows 0.000 for a car still on course. The server drops
     // those now, but saved and older answers can carry one, and it is no time.
@@ -269,7 +272,12 @@ data class Run(
     val timeOfDayMillis: Double? = null,
     val cones: Int = 0,
     val dnf: Boolean = false,
+    // Where the run sits on the GGLC sheet, so the compare screen can line up
+    // two drivers' morning and afternoon runs even when one used more of the
+    // morning's columns. Other sources line up by run number.
+    val column: Int? = null,
 ) {
+    val slot: Int get() = column ?: number
     val id: Int get() = lapNumber
     val timeString: String get() = if (dnf) "DNF" else LapTime.format(seconds)
 }
@@ -331,8 +339,8 @@ data class Driver(
                 positionInClass = positionInClass,
                 runs = gglc.runs.mapNotNull { run ->
                     when {
-                        run.dnf -> Run(number = run.run, lapNumber = run.run, seconds = 0.0, dnf = true)
-                        else -> run.score?.let { Run(number = run.run, lapNumber = run.run, seconds = it, cones = run.cones) }
+                        run.dnf -> Run(number = run.run, lapNumber = run.run, seconds = 0.0, dnf = true, column = run.column)
+                        else -> run.score?.let { Run(number = run.run, lapNumber = run.run, seconds = it, cones = run.cones, column = run.column) }
                     }
                 },
                 officialRunNumber = gglc.runs.firstOrNull { it.best && it.score != null }?.run,

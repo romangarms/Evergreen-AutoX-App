@@ -172,6 +172,32 @@ def test_car_on_course_is_not_a_time():
     assert ann["runs"] == [] and ann["best"] is None and ann["indexed"] is None
 
 
+def test_runs_are_numbered_past_empty_columns():
+    # 2026-11-08: the morning block had Run 1-10 columns, most left blank,
+    # then the afternoon block started again at Run 1.
+    head = ("Name", "Indexed", "Run 1", "Run 2", "Run 3", "Run 1", "Run 2")
+    klass = gglc._parse_table(
+        [
+            [{"tag": "th", "attrs": {}, "text": "Fun"}],
+            [{"tag": "th", "attrs": {}, "text": h} for h in head],
+            [
+                _cell("Roman"),
+                _cell("44.119"),
+                _cell("46.445"),
+                _cell("44.119", best=True),
+                _cell(""),
+                _cell("44.049"),
+                _cell("43.780+1"),
+            ],
+        ]
+    )
+    (roman,) = klass["drivers"]
+    assert [run["run"] for run in roman["runs"]] == [1, 2, 3, 4]
+    assert [run["column"] for run in roman["runs"]] == [1, 2, 4, 5]
+    assert [run["raw"] for run in roman["runs"]][2:] == ["44.049", "43.780+1"]
+    assert roman["official"] == 44.119
+
+
 def test_highlight_wins_over_a_faster_run():
     runs = [_cell("38.493"), _cell("38.138"), _cell("38.385", best=True)]
     gglc_pdf.mark_scored_run(runs)

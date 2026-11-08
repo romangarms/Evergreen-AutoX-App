@@ -175,6 +175,15 @@ private fun niceTicks(lo: Double, hi: Double, desired: Int): List<Double> {
     return ticks
 }
 
+/**
+ * The places runs line up in when two drivers are compared: every sheet column
+ * (or run number) either driver used, in order. A driver who used more of
+ * GGLC's morning columns would otherwise push the other's afternoon runs
+ * against their own morning ones. A lone driver gets one slot per run.
+ */
+fun runSlots(a: Driver, b: Driver?): List<Int> =
+    (a.runs.map { it.slot } + b?.runs?.map { it.slot }.orEmpty()).distinct().sorted()
+
 /** The driver page's "times over the day" chart: the compare chart with one driver. */
 @Composable
 fun DriverTimesChart(driver: Driver, modifier: Modifier = Modifier) {
@@ -198,17 +207,13 @@ private fun RunChart(a: Driver, b: Driver?) {
     val pad = max((hi - lo) * 0.18, 0.25)
     val yMin = lo - pad
     val yMax = hi + pad
-    val runCount = max(max(a.runs.size, b?.runs?.size ?: 0), 1)
+    val slots = runSlots(a, b)
+    val runCount = max(slots.size, 1)
     val ticks = niceTicks(yMin, yMax, 3)
 
     Canvas(Modifier.fillMaxWidth().height(egDp(140f))) {
         val yLabels = ticks.map { measurer.measure(String.format(Locale.US, "%.1f", it), axisStyle) }
-        // A lone driver's own run numbers label the slots, so they match the runs
-        // table; a comparison counts slots, like its run-by-run list.
-        val xLabels = (1..runCount).map { slot ->
-            val number = if (b == null) a.runs.getOrNull(slot - 1)?.number ?: slot else slot
-            measurer.measure("R$number", labelStyle)
-        }
+        val xLabels = (1..runCount).map { measurer.measure("R$it", labelStyle) }
         val leftInset = (yLabels.maxOfOrNull { it.size.width } ?: 0) + 6.dp.toPx()
         val bottomInset = (xLabels.maxOfOrNull { it.size.height } ?: 0) + 4.dp.toPx()
         val plotWidth = size.width - leftInset
@@ -234,21 +239,23 @@ private fun RunChart(a: Driver, b: Driver?) {
             drawText(label, topLeft = Offset(x(i + 1) - label.size.width / 2f, plotHeight + 4.dp.toPx()))
         }
 
-        series(a, colors.red, null, ::x, ::y)
-        if (b != null) series(b, colors.ink, PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())), ::x, ::y)
+        series(a, slots, colors.red, null, ::x, ::y)
+        if (b != null) series(b, slots, colors.ink, PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())), ::x, ::y)
     }
 }
 
 private fun DrawScope.series(
     driver: Driver,
+    slots: List<Int>,
     color: Color,
     dash: PathEffect?,
     x: (Int) -> Float,
     y: (Double) -> Float,
 ) {
-    // Placed by order in the run list, not by run number: run numbers can skip
-    // (laps filtered out as grid laps keep their numbers).
-    val points = driver.runs.mapIndexedNotNull { i, run -> if (run.dnf) null else Offset(x(i + 1), y(run.seconds)) }
+    val points = driver.runs.mapNotNull { run ->
+        val index = slots.indexOf(run.slot)
+        if (run.dnf || index < 0) null else Offset(x(index + 1), y(run.seconds))
+    }
     if (points.size > 1) {
         val path = Path()
         points.forEachIndexed { i, point ->
@@ -270,9 +277,9 @@ private fun RunByRun(a: Driver, b: Driver) {
             EGColumnLabel("RUN-BY-RUN", Modifier.weight(1f))
             EGColumnLabel("GAP")
         }
-        for (index in 0 until max(a.runs.size, b.runs.size)) {
-            val runA = a.runs.getOrNull(index)
-            val runB = b.runs.getOrNull(index)
+        runSlots(a, b).forEachIndexed { index, slot ->
+            val runA = a.runs.firstOrNull { it.slot == slot }
+            val runB = b.runs.firstOrNull { it.slot == slot }
             val gap = if (runA != null && runB != null && !runA.dnf && !runB.dnf) runA.seconds - runB.seconds else null
             val aFaster = (gap ?: 0.0) < 0
             val bFaster = (gap ?: 0.0) > 0
