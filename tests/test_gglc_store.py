@@ -93,6 +93,23 @@ def test_unhighlighted_row_scores_best_of_first_five():
     assert [i for i, c in enumerate(runs) if c["attrs"]] == [1]
 
 
+def test_car_on_course_is_not_a_time():
+    head = ("Name", "Indexed", "Run 1", "Run 2", "Run 3")
+    klass = gglc._parse_table(
+        [
+            [{"tag": "th", "attrs": {}, "text": "Street"}],
+            [{"tag": "th", "attrs": {}, "text": h} for h in head],
+            [_cell("Will"), _cell("0.000"), _cell("52.1"), _cell("0.000"), _cell("")],
+            [_cell("Ann"), _cell("0"), _cell("0.000+1"), _cell(""), _cell("")],
+        ]
+    )
+    will, ann = klass["drivers"]
+    assert [run["run"] for run in will["runs"]] == [1]
+    assert will["best"] == 52.1
+    assert will["indexed"] is None
+    assert ann["runs"] == [] and ann["best"] is None and ann["indexed"] is None
+
+
 def test_highlight_wins_over_a_faster_run():
     runs = [_cell("38.493"), _cell("38.138"), _cell("38.385", best=True)]
     gglc_pdf.mark_scored_run(runs)

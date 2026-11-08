@@ -102,7 +102,11 @@ data class GGLCRun(
     val dnf: Boolean,
     val total: Double? = null,
     val best: Boolean,
-)
+) {
+    // The live page shows 0.000 for a car still on course. The server drops
+    // those now, but saved and older answers can carry one, and it is no time.
+    val score: Double? get() = total?.takeIf { it > 0 }
+}
 
 @Serializable
 data class LBCourse(
@@ -328,11 +332,10 @@ data class Driver(
                 runs = gglc.runs.mapNotNull { run ->
                     when {
                         run.dnf -> Run(number = run.run, lapNumber = run.run, seconds = 0.0, dnf = true)
-                        run.total == null -> null
-                        else -> Run(number = run.run, lapNumber = run.run, seconds = run.total, cones = run.cones)
+                        else -> run.score?.let { Run(number = run.run, lapNumber = run.run, seconds = it, cones = run.cones) }
                     }
                 },
-                officialRunNumber = gglc.runs.firstOrNull { it.best && it.total != null }?.run,
+                officialRunNumber = gglc.runs.firstOrNull { it.best && it.score != null }?.run,
                 bestTimeString = null,
                 vehicle = carName.takeIf {
                     it.isNotEmpty() && it != name && !it.equals(carClass ?: "", ignoreCase = true)
@@ -419,7 +422,7 @@ object SessionResults {
                     Ranked(
                         driver = driver,
                         carClass = driver.carClass.ifEmpty { klass.name },
-                        best = driver.runs.mapNotNull { it.total }.minOrNull(),
+                        best = driver.runs.mapNotNull { it.score }.minOrNull(),
                     )
                 }
             }

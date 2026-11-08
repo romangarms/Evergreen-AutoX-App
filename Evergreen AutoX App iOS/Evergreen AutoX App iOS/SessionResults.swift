@@ -30,7 +30,7 @@ extension APIClient {
                     (
                         driver: driver,
                         carClass: driver.carClass.isEmpty ? klass.name : driver.carClass,
-                        best: driver.runs.compactMap(\.total).min()
+                        best: driver.runs.compactMap(\.score).min()
                     )
                 }
             }

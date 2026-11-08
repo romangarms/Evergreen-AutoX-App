@@ -137,6 +137,13 @@ def _speedhive_cars(upstream: Upstream, event_id: int) -> list[Car]:
     return cars
 
 
+# A 0.000 is a run still on course (gglc._parse_run drops it now, but saved
+# pages and older answers can still carry one), so it is no time at all.
+def _gglc_total(run: dict) -> float | None:
+    total = run.get("total")
+    return total if total is not None and total > 0 else None
+
+
 # Ranked the way the app ranks a GGLC page (gglcDrivers in SessionResults.swift), so
 # the positions and the P-numbers of cars without one match what it shows.
 def _gglc_cars(event: dict | None) -> list[Car]:
@@ -149,12 +156,12 @@ def _gglc_cars(event: dict | None) -> list[Car]:
                 Run(
                     key=str(run["run"]),
                     number=run["run"],
-                    seconds=run.get("total"),
+                    seconds=_gglc_total(run),
                     cones=run.get("cones") or 0,
                     dnf=bool(run.get("dnf")),
                 )
                 for run in driver.get("runs", [])
-                if run.get("total") is not None or run.get("dnf")
+                if _gglc_total(run) is not None or run.get("dnf")
             ]
             name = driver.get("name") or ""
             if not name:

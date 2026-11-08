@@ -111,6 +111,10 @@ struct GGLCRun: Codable {
     let dnf: Bool
     let total: Double?
     let best: Bool
+
+    // The live page shows 0.000 for a car still on course. The server drops
+    // those now, but saved and older answers can carry one, and it is no time.
+    var score: Double? { total.flatMap { $0 > 0 ? $0 : nil } }
 }
 
 struct LBCourse: Codable, Identifiable, Hashable {
@@ -646,13 +650,13 @@ struct Driver: Identifiable {
             vehicle = carName
         }
         self.positionInClass = positionInClass
-        officialRunNumber = gglc.runs.first { $0.best && $0.total != nil }?.run
+        officialRunNumber = gglc.runs.first { $0.best && $0.score != nil }?.run
         bestTimeString = nil
         runs = gglc.runs.compactMap { run in
             if run.dnf {
                 return Run(number: run.run, lapNumber: run.run, seconds: 0, speed: nil, timeOfDay: nil, dnf: true)
             }
-            guard let total = run.total else { return nil }
+            guard let total = run.score else { return nil }
             return Run(number: run.run, lapNumber: run.run, seconds: total, speed: nil, timeOfDay: nil, cones: run.cones)
         }
     }

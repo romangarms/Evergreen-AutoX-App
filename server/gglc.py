@@ -77,6 +77,10 @@ def _parse_run(number: int, cell: dict) -> dict | None:
         return None
     best = "lightgreen" in cell["attrs"].get("style", "")
     m = _TIME_RE.match(text)
+    if m and float(m.group(1)) == 0:
+        # A car that has started but not finished shows 0.000 on the live
+        # page; that is a run in progress, not a time, so treat it as blank.
+        return None
     if m:
         time = float(m.group(1))
         cones = int(m.group(2) or 0)
@@ -141,7 +145,9 @@ def _parse_table(table: list) -> dict | None:
                 "make": col(texts, "Make"),
                 "model": col(texts, "Model"),
                 "carClass": col(texts, "Class"),
-                "indexed": float(indexed) if _TIME_RE.fullmatch(indexed) else None,
+                "indexed": float(indexed)
+                if _TIME_RE.fullmatch(indexed) and float(indexed) > 0
+                else None,
                 "best": min(totals) if totals else None,
                 "official": official,
                 "runs": runs,
