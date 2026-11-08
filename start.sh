@@ -28,10 +28,15 @@ Usage: ./start.sh [command]
                  Store an Apple Push Notifications key (a .p8 from the
                  developer portal with APNs enabled) so the server can send
                  new-time notifications. Without one it sends none.
+  asc-key FILE ISSUER_ID [KEY_ID]
+                 Store an App Store Connect API key (Users and Access >
+                 Integrations, a .p8 plus the issuer ID shown above the key
+                 list) so /api/stats reports TestFlight testers as users.
+  testers        Ask App Store Connect for the tester count with that key.
   help           Show this message.
 
 Credentials live in $ENV_FILE (gitignored) as LEADERBOARD_ADMIN_USER,
-LEADERBOARD_ADMIN_PASSWORD, LEADERBOARD_READ_KEY and the APPLE_ and APNS_ values. Restart
+LEADERBOARD_ADMIN_PASSWORD, LEADERBOARD_READ_KEY and the APPLE_, APNS_ and ASC_ values. Restart
 the server after changing them.
 EOF
 }
@@ -124,13 +129,19 @@ write_key() {
     fi
     tmp=$(mktemp)
     if [ -f "$ENV_FILE" ]; then
-        grep -v "^${prefix}_\\(TEAM_ID\\|KEY_ID\\|PRIVATE_KEY\\)=" "$ENV_FILE" > "$tmp" || true
+        grep -v "^${prefix}_\\(TEAM_ID\\|ISSUER_ID\\|KEY_ID\\|PRIVATE_KEY\\)=" "$ENV_FILE" > "$tmp" || true
     fi
     # The whole PEM, BEGIN and END lines included, on one line with a literal
-    # \n at each line break; server/apple.py and push.py turn those back into
-    # newlines.
-    printf "%s_TEAM_ID='%s'\n%s_KEY_ID='%s'\n%s_PRIVATE_KEY='%s'\n" \
-        "$prefix" "$APPLE_TEAM_ID_DEFAULT" "$prefix" "$key_id" "$prefix" "$(awk 'NF {printf "%s\\n", $0}' "$file")" >> "$tmp"
+    # \n at each line break; server/apple.py, push.py and appstore.py turn
+    # those back into newlines. App Store Connect keys carry an issuer ID
+    # instead of the team ID.
+    if [ "$prefix" = ASC ]; then
+        printf "ASC_ISSUER_ID='%s'\n" "$ISSUER_ID" >> "$tmp"
+    else
+        printf "%s_TEAM_ID='%s'\n" "$prefix" "$APPLE_TEAM_ID_DEFAULT" >> "$tmp"
+    fi
+    printf "%s_KEY_ID='%s'\n%s_PRIVATE_KEY='%s'\n" \
+        "$prefix" "$key_id" "$prefix" "$(awk 'NF {printf "%s\\n", $0}' "$file")" >> "$tmp"
     mv "$tmp" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "Saved key $key_id to $ENV_FILE. Restart the server to pick it up (./start.sh)."
@@ -192,6 +203,22 @@ case "${1:-start}" in
         ;;
     push-key)
         write_key APNS push-key "$2" "$3"
+        ;;
+    asc-key)
+        if [ -z "$3" ]; then
+            echo "Usage: ./start.sh asc-key path/to/AuthKey_XXXXXXXXXX.p8 ISSUER_ID [KEY_ID]" >&2
+            exit 1
+        fi
+        ISSUER_ID=$3 write_key ASC asc-key "$2" "$4"
+        ;;
+    testers)
+        if docker compose ps --status running --services 2>/dev/null | grep -qx autox; then
+            docker compose exec -T autox python server/appstore.py
+        else
+            ensure_venv
+            load_env
+            ./.venv/bin/python server/appstore.py
+        fi
         ;;
     help|-h|--help)
         usage

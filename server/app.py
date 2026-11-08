@@ -3,6 +3,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import apple
+import appstore
 import cache
 import db
 import gglc
@@ -2509,6 +2511,11 @@ def updates_feed():
         ) from error
 
 
+# TestFlight's tester list changes a few times a week; once an hour is plenty.
+TESTER_TTL = 60 * 60
+log = logging.getLogger(__name__)
+
+
 @app.get("/api/stats")
 def stats():
     """Aggregate counts for the project page on romangarms.com.
@@ -2526,11 +2533,23 @@ def stats():
     in, posted, or turned on notifications. installs is the lifetime count,
     which pruning does not touch; it starts from the release that added
     known_devices, as devices pruned before then are gone for good.
+
+    Both run well above the number of people: App Review's phones, dev and
+    simulator builds, Android, and testers who have left TestFlight all have
+    tokens. users is the number to show: App Store Connect's TestFlight tester
+    count when an ASC key is set (appstore.py), and devices otherwise or while
+    App Store Connect cannot be reached.
     """
     with db.session() as conn:
         devices = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
         installs = conn.execute("SELECT COUNT(*) FROM known_devices").fetchone()[0]
-    return {"devices": devices, "installs": installs}
+    users = devices
+    if appstore.configured():
+        try:
+            users = cache.cached(("asc-testers",), TESTER_TTL, appstore.tester_count)
+        except Exception:
+            log.exception("App Store Connect tester count failed")
+    return {"users": users, "devices": devices, "installs": installs}
 
 
 def _android_release() -> tuple[dict, Path]:

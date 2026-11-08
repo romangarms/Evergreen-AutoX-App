@@ -13,4 +13,8 @@ services:
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_PRIVATE_KEY: ${APNS_PRIVATE_KEY:-}
+      ASC_ISSUER_ID: ${ASC_ISSUER_ID:-}
+      ASC_KEY_ID: ${ASC_KEY_ID:-}
+      ASC_PRIVATE_KEY: ${ASC_PRIVATE_KEY:-}
+      ASC_APP_ID: ${ASC_APP_ID:-}
     restart: unless-stopped

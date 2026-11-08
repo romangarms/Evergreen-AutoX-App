@@ -1,4 +1,6 @@
 import app
+import appstore
+import cache
 import db
 
 TOKEN = "test-device-stats-000000"
@@ -20,7 +22,7 @@ def go_idle_and_prune():
 
 
 def test_stats_are_public_and_count_devices(client, device):
-    assert client.get("/api/stats").json() == {"devices": 0, "installs": 0}
+    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 0}
 
     device("alice")
     device("bob", signed_in=False)
@@ -36,23 +38,23 @@ def test_a_device_added_behind_the_server_is_remembered_by_the_next_prune(
     device("alice", signed_in=False)
     go_idle_and_prune()
 
-    assert client.get("/api/stats").json() == {"devices": 0, "installs": 1}
+    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 1}
 
 
 def test_stats_carry_nothing_but_counts(client):
     call_as_device(client)
 
-    assert set(client.get("/api/stats").json()) == {"devices", "installs"}
+    assert set(client.get("/api/stats").json()) == {"users", "devices", "installs"}
 
 
 def test_installs_survive_pruning(client):
     call_as_device(client)
-    assert client.get("/api/stats").json() == {"devices": 1, "installs": 1}
+    assert client.get("/api/stats").json() == {"users": 1, "devices": 1, "installs": 1}
 
     go_idle_and_prune()
 
     # The live table forgets the phone; the lifetime count does not.
-    assert client.get("/api/stats").json() == {"devices": 0, "installs": 1}
+    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 1}
 
 
 def test_a_pruned_device_coming_back_is_not_counted_twice(client):
@@ -61,7 +63,7 @@ def test_a_pruned_device_coming_back_is_not_counted_twice(client):
 
     call_as_device(client)
 
-    assert client.get("/api/stats").json() == {"devices": 1, "installs": 1}
+    assert client.get("/api/stats").json() == {"users": 1, "devices": 1, "installs": 1}
 
 
 def test_installs_count_distinct_devices(client):
@@ -82,3 +84,30 @@ def test_known_devices_holds_a_digest_not_the_token(client):
 
     assert stored == [db.device_fingerprint(TOKEN)]
     assert TOKEN not in stored
+
+
+def test_users_is_the_testflight_count_when_app_store_connect_answers(
+    client, monkeypatch
+):
+    call_as_device(client)
+    monkeypatch.setattr(appstore, "configured", lambda: True)
+    monkeypatch.setattr(appstore, "tester_count", lambda: 23)
+    cache._entries.clear()
+
+    assert client.get("/api/stats").json() == {
+        "users": 23,
+        "devices": 1,
+        "installs": 1,
+    }
+
+
+def test_users_falls_back_to_devices_when_app_store_connect_fails(client, monkeypatch):
+    def down():
+        raise OSError("unreachable")
+
+    call_as_device(client)
+    monkeypatch.setattr(appstore, "configured", lambda: True)
+    monkeypatch.setattr(appstore, "tester_count", down)
+    cache._entries.clear()
+
+    assert client.get("/api/stats").json()["users"] == 1
