@@ -1,11 +1,11 @@
 """Release notes for the /updates page, read from the repo's GitHub releases.
 
 `deploy.sh` publishes one release per build (tag `ios-v2.0-3`, name
-`iOS 2.0 (3)`) whose body is the commit subjects since the last one. The page
+`iOS 2.0 (3)`) whose body is written in the editor from a draft of the commit
+subjects since the last one (`./deploy.sh notes TAG` rewrites it later). The page
 shows one post per version, so builds are grouped by version and the lines
 that only make sense to a developer (merges, version bumps, screenshots,
-App Store Connect copy) are dropped. Edit a release's body on GitHub to
-change what the page says.
+App Store Connect copy) are dropped.
 """
 
 import re

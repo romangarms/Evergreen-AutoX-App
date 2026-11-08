@@ -14,6 +14,7 @@ usage() {
     cat <<USAGE
 Usage: ./deploy.sh [options] [build|patch|minor|major|X.Y.Z]
        ./deploy.sh release
+       ./deploy.sh notes [TAG]
        ./deploy.sh set-key
 
 Ships a new TestFlight build: bumps the version, archives a Release build,
@@ -25,12 +26,22 @@ exports an .ipa, uploads it to App Store Connect, then commits, tags
                  interactively when omitted.
   --skip-bump    Upload the version already in the project.
   --no-upload    Archive and export the .ipa only; no upload, no release.
+  --notes=FILE   Use FILE as the release notes instead of asking for them.
   -y             Don't ask before continuing with uncommitted changes or
-                 before the git/GitHub step.
+                 before the git/GitHub step, and publish the drafted notes
+                 without opening the editor.
   release        Only do the git/GitHub step for the version in the project,
                  using the archive already in $BUILD_DIR/ (re-exports the .ipa
                  if needed). For retrying after a failed release step.
+  notes [TAG]    Rewrite an existing release's notes in the editor (default:
+                 the version in the project).
   set-key        Set or change the App Store Connect API key used to upload.
+
+Release notes are what users read on the website's /updates page. Before the
+release is created, \$VISUAL/\$EDITOR (vi if unset) opens a draft built from
+the commit subjects since the last release; rewrite it as one "- " line per
+change a user would notice. An empty file stops before the release is created;
+./deploy.sh release picks up from there.
   help           Show this message.
 
 Uploading needs an App Store Connect API key (xcodebuild cannot use the
@@ -166,6 +177,49 @@ do_upload() {
     echo "Uploaded $version ($build). It will appear under TestFlight in App Store Connect once processed (usually 5-15 min)."
 }
 
+draft_notes() {
+    local previous
+    previous=$(git describe --tags --abbrev=0 --match 'ios-v*' "$tag^" 2>/dev/null || true)
+    [ -n "$previous" ] || return 0
+    git log --no-merges --format='- %s' "$previous..$tag" -- .. |
+        grep -viE '^- (ios|android) [0-9]|screenshot' || true
+}
+
+strip_comments() {
+    local cleaned
+    cleaned=$(grep -v '^#' "$1" | sed -e '/./,$!d')
+    printf '%s\n' "$cleaned" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' >"$1"
+}
+
+edit_notes() {
+    local file=$1 label=$2 body
+    body=$(cat "$file")
+    cat >"$file" <<HEADER
+# Release notes for $label, shown to users on the website's /updates page.
+# One "- " line per change a user would notice; drop developer-only lines.
+# Lines starting with # are removed. Save an empty file to stop.
+
+$body
+HEADER
+    ${VISUAL:-${EDITOR:-vi}} "$file"
+    strip_comments "$file"
+    if [ ! -s "$file" ]; then
+        echo "Release notes are empty; stopping." >&2
+        return 1
+    fi
+}
+
+edit_release_notes() {
+    local target=$1 file
+    command -v gh >/dev/null || { echo "gh CLI not found; install with: brew install gh && gh auth login" >&2; exit 1; }
+    mkdir -p "$BUILD_DIR"
+    file="$BUILD_DIR/notes-$target.md"
+    gh release view "$target" --json body -q .body >"$file"
+    edit_notes "$file" "$target" || exit 1
+    gh release edit "$target" --notes-file "$file"
+    echo "Updated notes for $target: $(gh release view "$target" --json url -q .url)"
+}
+
 do_release() {
     step "Git / GitHub release $tag"
     if ! command -v gh >/dev/null; then
@@ -190,13 +244,20 @@ do_release() {
         gh release upload "$tag" "$ipa" --clobber
         echo "Release $tag already existed; replaced its .ipa."
     else
-        previous=$(git describe --tags --abbrev=0 --match 'ios-v*' "$tag^" 2>/dev/null || true)
-        if [ -n "$previous" ]; then
-            notes=$(git log --format='- %s' "$previous..$tag" -- . | grep -v -- '- iOS ' || true)
+        notes="$BUILD_DIR/notes-$version-$build.md"
+        if [ -n "$notes_file" ]; then
+            cp "$notes_file" "$notes"
+        elif [ ! -s "$notes" ]; then
+            draft_notes >"$notes"
         fi
+        if [ -z "$notes_file" ] && ! $assume_yes; then
+            edit_notes "$notes" "$tag" || return 1
+        fi
+        strip_comments "$notes"
+        [ -s "$notes" ] || echo "- TestFlight build $version ($build)" >"$notes"
         gh release create "$tag" "$ipa" \
             --title "iOS $version ($build)" \
-            --notes "${notes:-TestFlight build $version ($build).}"
+            --notes-file "$notes"
     fi
     echo "Release: $(gh release view "$tag" --json url -q .url)"
 }
@@ -206,18 +267,34 @@ skip_bump=false
 upload=true
 assume_yes=false
 mode=deploy
+notes_file=""
+notes_tag=""
 for arg in "$@"; do
+    if [ "$mode" = notes ] && [ -z "$notes_tag" ] && [[ "$arg" != -* ]]; then
+        notes_tag=$arg
+        continue
+    fi
     case "$arg" in
+        --notes=*)
+            notes_file=${arg#--notes=}
+            [ -f "$notes_file" ] || { echo "No file at $notes_file" >&2; exit 1; }
+            ;;
         --skip-bump) skip_bump=true ;;
         --no-upload) upload=false ;;
         -y) assume_yes=true ;;
         release) mode=release ;;
+        notes) mode=notes ;;
         set-key) set_key; exit 0 ;;
         help|-h|--help) usage; exit 0 ;;
         build|patch|minor|major|[0-9]*.[0-9]*) bump=$arg ;;
         *) echo "Unknown argument: $arg" >&2; usage >&2; exit 1 ;;
     esac
 done
+
+if [ "$mode" = notes ]; then
+    edit_release_notes "${notes_tag:-ios-v$(setting MARKETING_VERSION)-$(setting CURRENT_PROJECT_VERSION)}"
+    exit
+fi
 
 if ! command -v xcodebuild >/dev/null; then
     echo "xcodebuild not found. Install Xcode and run: sudo xcode-select -s /Applications/Xcode.app" >&2
