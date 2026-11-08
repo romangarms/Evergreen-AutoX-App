@@ -14,6 +14,7 @@ usage() {
     cat <<USAGE
 Usage: ./deploy.sh [options] [build|patch|minor|major|X.Y.Z]
        ./deploy.sh release
+       ./deploy.sh notes [ios-vX.Y-N]
        ./deploy.sh set-key
 
 Ships a new TestFlight build: bumps the version, archives a Release build,
@@ -30,6 +31,8 @@ exports an .ipa, uploads it to App Store Connect, then commits, tags
   release        Only do the git/GitHub step for the version in the project,
                  using the archive already in $BUILD_DIR/ (re-exports the .ipa
                  if needed). For retrying after a failed release step.
+  notes          Rewrite the GitHub release notes of the current build, or
+                 of the tag given (ios-vX.Y-N), in \$EDITOR.
   set-key        Set or change the App Store Connect API key used to upload.
   help           Show this message.
 
@@ -166,6 +169,69 @@ do_upload() {
     echo "Uploaded $version ($build). It will appear under TestFlight in App Store Connect once processed (usually 5-15 min)."
 }
 
+# Release notes are what the website's /updates page shows, so they are
+# written for the people using the app, not as a commit log.
+notes_help() {
+    cat <<HELP
+# Release notes for $1. The website's Updates page shows these, so write
+# them for people using the app: one '- ' line per change they would
+# notice, in plain words. Leave out server internals, the dev console,
+# screenshots and App Store copy. Lines starting with # are dropped; an
+# empty file keeps the commit subjects. The commits since the last build
+# are below for reference.
+#
+HELP
+}
+
+# The commits since the previous ios-v* tag, as a starting point: subjects as
+# bullets (version bumps and merges dropped), then each commit's full message
+# as comments, since the subject alone often leaves out what users will see.
+draft_notes() {
+    local tag=$1 previous range skip
+    previous=$(git describe --tags --abbrev=0 --match 'ios-v*' "$tag^" 2>/dev/null || true)
+    range=${previous:+$previous..}$tag
+    skip=(--no-merges --invert-grep -E --grep='^(iOS|Android) [0-9]')
+    git log "${skip[@]}" --format='- %s' "$range"
+    echo
+    notes_help "$tag"
+    git log "${skip[@]}" --format='%s%n%n%b' "$range" \
+        | grep -Ev '^(Co-Authored-By|Claude-Session):' | sed 's/^/#   /'
+}
+
+# Drops # lines and the blank lines left at the end.
+strip_comments() {
+    awk '!/^#/ { lines[++n] = $0 } END { while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print lines[i] }'
+}
+
+# Opens the notes in $EDITOR unless -y, then strips the comments. Falls back
+# to the drafted subjects if the result is empty.
+edit_notes() {
+    local file=$1 draft
+    draft=$(cat "$file")
+    if ! $assume_yes; then
+        "${EDITOR:-vi}" "$file" </dev/tty >/dev/tty
+    fi
+    strip_comments < "$file" > "$file.tmp"
+    if ! grep -q '[^[:space:]]' "$file.tmp"; then
+        printf '%s\n' "$draft" | strip_comments > "$file.tmp"
+    fi
+    mv "$file.tmp" "$file"
+    echo "Release notes:"
+    cat "$file"
+}
+
+# ./deploy.sh notes [TAG]: rewrite an existing release's notes (the current
+# build's by default). Shows the current notes above the commit log.
+do_notes() {
+    local tag=$1 file="$BUILD_DIR/notes-$1.md"
+    command -v gh >/dev/null || { echo "gh CLI not found; install with: brew install gh && gh auth login" >&2; exit 1; }
+    gh release view "$tag" >/dev/null || { echo "No GitHub release $tag." >&2; exit 1; }
+    { gh release view "$tag" --json body -q .body; echo; draft_notes "$tag" | sed -n '/^# Release notes/,$p'; } > "$file"
+    edit_notes "$file"
+    gh release edit "$tag" --notes-file "$file"
+    echo "Release: $(gh release view "$tag" --json url -q .url)"
+}
+
 do_release() {
     step "Git / GitHub release $tag"
     if ! command -v gh >/dev/null; then
@@ -190,13 +256,12 @@ do_release() {
         gh release upload "$tag" "$ipa" --clobber
         echo "Release $tag already existed; replaced its .ipa."
     else
-        previous=$(git describe --tags --abbrev=0 --match 'ios-v*' "$tag^" 2>/dev/null || true)
-        if [ -n "$previous" ]; then
-            notes=$(git log --format='- %s' "$previous..$tag" -- . | grep -v -- '- iOS ' || true)
-        fi
+        notes_file="$BUILD_DIR/notes-$version-$build.md"
+        draft_notes "$tag" > "$notes_file"
+        edit_notes "$notes_file"
         gh release create "$tag" "$ipa" \
             --title "iOS $version ($build)" \
-            --notes "${notes:-TestFlight build $version ($build).}"
+            --notes-file "$notes_file"
     fi
     echo "Release: $(gh release view "$tag" --json url -q .url)"
 }
@@ -206,12 +271,15 @@ skip_bump=false
 upload=true
 assume_yes=false
 mode=deploy
+notes_tag=""
 for arg in "$@"; do
     case "$arg" in
         --skip-bump) skip_bump=true ;;
         --no-upload) upload=false ;;
         -y) assume_yes=true ;;
         release) mode=release ;;
+        notes) mode=notes ;;
+        ios-v*) notes_tag=$arg ;;
         set-key) set_key; exit 0 ;;
         help|-h|--help) usage; exit 0 ;;
         build|patch|minor|major|[0-9]*.[0-9]*) bump=$arg ;;
@@ -245,6 +313,11 @@ export_dir="$BUILD_DIR/export-$version-$build"
 ipa="$BUILD_DIR/EvergreenAutoX-$version-$build.ipa"
 log="$BUILD_DIR/deploy-$version-$build.log"
 mkdir -p "$BUILD_DIR"
+
+if [ "$mode" = notes ]; then
+    do_notes "${notes_tag:-$tag}"
+    exit
+fi
 
 if [ "$mode" = release ]; then
     [ -d "$archive" ] || { echo "No archive at $archive; run ./deploy.sh --skip-bump first." >&2; exit 1; }
