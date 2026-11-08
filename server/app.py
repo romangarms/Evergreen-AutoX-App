@@ -25,6 +25,7 @@ import notify
 import push
 import racemonitor
 import ratelimit
+import releases
 import trackaddict
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -2489,6 +2490,23 @@ async def parse_trackaddict(request: Request):
     if not parsed["laps"]:
         raise HTTPException(status_code=400, detail="No laps found in log")
     return parsed
+
+
+# GitHub allows 60 unauthenticated requests an hour per address.
+RELEASES_TTL = 10 * 60
+
+
+@app.get("/api/updates")
+def updates_feed():
+    """Release notes for the /updates page, one entry per app version."""
+    try:
+        return cache.cached(
+            "github-releases", RELEASES_TTL, lambda: releases.group(releases.fetch())
+        )
+    except (httpx.HTTPError, ValueError) as error:
+        raise HTTPException(
+            status_code=502, detail="Couldn't load the release notes from GitHub"
+        ) from error
 
 
 @app.get("/api/stats")

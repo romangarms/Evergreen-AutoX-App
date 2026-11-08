@@ -133,3 +133,4 @@ Approving, rejecting or deleting a submission deletes its photo.
 - `GET /android` — the current Android APK, downloaded as `AutoX-Live-<version>.apk`; 404 when there is none
 - `GET /support`, `GET /privacy` — the pages the app's Support and Privacy links open
 - `GET /updates` — the site's news page: outage notes and release notes for each app version
+- `GET /api/updates` — release notes from the repo's GitHub releases, one entry per app version (`version`, `released_at`, `updated_at`, `notes`, `url`), newest first; 502 when GitHub can't be reached

@@ -21,22 +21,12 @@
   <h1>Updates</h1>
   <p class="meta">Release notes, outages, and anything else worth knowing. Newest first.</p>
 
-  <!-- New posts go at the top: an <article class="post"> with an h2 date line and an h3 title. -->
+  <!-- Release notes come from GitHub releases (GET /api/updates) and are slotted in by date.
+       Other posts are written here: an <article class="post" data-date="YYYY-MM-DD"> with an h2
+       date line and an h3 title. -->
+  <p class="meta" id="releases-status" hidden></p>
 
-  <article class="post" id="2.0">
-    <h2>October 20, 2026 · Release</h2>
-    <h3>AutoX Live 2.0</h3>
-    <ul>
-      <li>Pull to refresh on every results and leaderboard page, even when it's empty or offline.</li>
-      <li>GGLC drivers show their car's make and model.</li>
-      <li>Share your Friends list: the Friends tab's menu copies you and your pins, fastest first,
-        ready to paste into the group chat.</li>
-      <li>Bigger tap targets for buttons, tabs, and event rows on iPhone.</li>
-      <li>CarPlay shows your last run the same way it shows your friends.</li>
-    </ul>
-  </article>
-
-  <article class="post" id="outage-2026-10-18">
+  <article class="post" id="outage-2026-10-18" data-date="2026-10-18">
     <h2>October 18, 2026 · Outage</h2>
     <h3>Sorry about the outage.</h3>
     <p>AutoX Live was down for several hours on 10/18 because <a href="/static/landing/nutmeg.jpg">Nutmeg</a>,
@@ -44,22 +34,50 @@
       complaints to Nutmeg.</p>
   </article>
 
-  <article class="post" id="1.5">
-    <h2>October 14, 2026 · Release</h2>
-    <h3>AutoX Live 1.5</h3>
-    <ul>
-      <li>Live results refresh themselves every 10 seconds on race day.</li>
-      <li>Notifications when a new time posts for you or a friend, even at an event you haven't
-        opened yet.</li>
-      <li>Apple Watch: your last run and your friends' times on your wrist.</li>
-      <li>CarPlay: the same two pages on your car's screen.</li>
-      <li>No signal? The last results stay on your phone, with a note saying how old they are.</li>
-      <li>No TrackAddict log? Post a time with a photo as proof, and it goes up once it's reviewed.</li>
-      <li>AutoX Live for Android, read-only for now. <a href="/android">Download it here.</a></li>
-    </ul>
-  </article>
-
   <p class="footer"><a href="/support">Support</a> · <a href="/privacy">Privacy Policy</a></p>
 </main>
+<script>
+  // Release posts from the app's GitHub releases, merged with the hand-written posts by date.
+  (async () => {
+    const main = document.querySelector("main");
+    const footer = main.querySelector(".footer");
+    const status = document.getElementById("releases-status");
+    const day = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+    const longDate = (iso) => new Date(iso).toLocaleDateString("en-US",
+      { timeZone: "America/Los_Angeles", month: "long", day: "numeric", year: "numeric" });
+    const el = (tag, text, className) => {
+      const node = document.createElement(tag);
+      if (text) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    let versions;
+    try {
+      const response = await fetch("/api/updates");
+      if (!response.ok) throw new Error(response.status);
+      versions = await response.json();
+    } catch {
+      status.innerHTML = 'Release notes didn\'t load. They are also on <a href="https://github.com/romangarms/Evergreen-AutoX-App/releases">GitHub</a>.';
+      status.hidden = false;
+      return;
+    }
+    for (const v of versions) {
+      if (!v.notes.length) continue;
+      const post = el("article", null, "post");
+      post.id = "v" + v.version;
+      post.dataset.date = day(v.released_at);
+      post.append(el("h2", longDate(v.released_at) + " · Release"), el("h3", "AutoX Live " + v.version));
+      const list = el("ul");
+      for (const note of v.notes) list.append(el("li", note));
+      post.append(list);
+      if (day(v.updated_at) !== day(v.released_at)) {
+        post.append(el("p", "Last updated " + longDate(v.updated_at) + ".", "meta"));
+      }
+      const later = [...main.querySelectorAll("article.post")].find((a) => a.dataset.date < post.dataset.date);
+      main.insertBefore(post, later || footer);
+    }
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+  })();
+</script>
 </body>
 </html>
