@@ -82,6 +82,13 @@ struct DriverDetailView: View {
                     .buttonStyle(EGButtonStyle(kind: .primary))
                 }
 
+                if !driver.timedRuns.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        EGColumnLabel(text: "TIMES OVER THE DAY")
+                        RunTimesChart(primary: driver)
+                    }
+                }
+
                 runsTable(driver)
             }
             .padding(.horizontal, 16)

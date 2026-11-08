@@ -97,6 +97,9 @@ fun DriverScreen(vm: AppViewModel, state: AppState, number: String, openCompare:
                 )
             }
         }
+        if (driver.timedRuns.isNotEmpty()) {
+            item { DriverTimesChart(driver, Modifier.padding(top = 14.dp)) }
+        }
         item { Box(Modifier.height(14.dp)) }
         driverRunsTable(driver, runDetail = { run -> if (run.number == driver.officialRunNumber) "OFFICIAL BEST" else null })
         item { Box(Modifier.height(24.dp)) }

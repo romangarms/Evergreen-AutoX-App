@@ -106,7 +106,7 @@ struct CompareView: View {
                     .egFont(12)
                     .foregroundStyle(Color.egGrayDark)
             } else {
-                runChart(a, b)
+                RunTimesChart(primary: a, secondary: b)
             }
         }
     }
@@ -119,66 +119,6 @@ struct CompareView: View {
                 .foregroundStyle(Color.egGray)
                 .lineLimit(1)
         }
-    }
-
-    private func runChart(_ a: Driver, _ b: Driver) -> some View {
-        let all = (a.timedRuns + b.timedRuns).map(\.seconds)
-        let lo = all.min() ?? 0
-        let hi = all.max() ?? 1
-        let pad = max((hi - lo) * 0.18, 0.25)
-
-        return Chart {
-            ForEach(a.timedRuns) { run in
-                LineMark(
-                    x: .value("Run", run.number),
-                    y: .value("Time", run.seconds),
-                    series: .value("Driver", "A")
-                )
-                .foregroundStyle(Color.egRed)
-                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
-                    .foregroundStyle(Color.egRed)
-                    .symbol(.square)
-                    .symbolSize(38)
-            }
-            ForEach(b.timedRuns) { run in
-                LineMark(
-                    x: .value("Run", run.number),
-                    y: .value("Time", run.seconds),
-                    series: .value("Driver", "B")
-                )
-                .foregroundStyle(Color.egInk)
-                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
-                    .foregroundStyle(Color.egInk)
-                    .symbol(.square)
-                    .symbolSize(38)
-            }
-        }
-        .chartYScale(domain: (lo - pad)...(hi + pad))
-        .chartXAxis {
-            AxisMarks(values: Array(1...max(a.runs.count, b.runs.count, 1))) { value in
-                AxisValueLabel {
-                    if let n = value.as(Int.self) {
-                        Text("R\(n)")
-                            .egFont(8.5, weight: .heavy)
-                            .foregroundStyle(Color.egGray)
-                    }
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                AxisGridLine().foregroundStyle(Color.egHairline)
-                AxisValueLabel {
-                    if let v = value.as(Double.self) {
-                        Text(String(format: "%.1f", v))
-                            .egFont(8.5, weight: .bold)
-                            .foregroundStyle(Color.egGray)
-                    }
-                }
-            }
-        }
-        .frame(height: 140)
     }
 
     private func runByRun(_ a: Driver, _ b: Driver) -> some View {
@@ -247,5 +187,74 @@ struct CompareView: View {
         }
         .frame(height: 8)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// The "times over the day" line chart: one driver's timed runs in red, and
+/// optionally a second driver's as a dashed ink line (the compare view).
+struct RunTimesChart: View {
+    let primary: Driver
+    var secondary: Driver?
+
+    var body: some View {
+        let others = secondary?.timedRuns ?? []
+        let all = (primary.timedRuns + others).map(\.seconds)
+        let lo = all.min() ?? 0
+        let hi = all.max() ?? 1
+        let pad = max((hi - lo) * 0.18, 0.25)
+        let runCount = max(primary.runs.count, secondary?.runs.count ?? 0, 1)
+
+        return Chart {
+            ForEach(primary.timedRuns) { run in
+                LineMark(
+                    x: .value("Run", run.number),
+                    y: .value("Time", run.seconds),
+                    series: .value("Driver", "A")
+                )
+                .foregroundStyle(Color.egRed)
+                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
+                    .foregroundStyle(Color.egRed)
+                    .symbol(.square)
+                    .symbolSize(38)
+            }
+            ForEach(others) { run in
+                LineMark(
+                    x: .value("Run", run.number),
+                    y: .value("Time", run.seconds),
+                    series: .value("Driver", "B")
+                )
+                .foregroundStyle(Color.egInk)
+                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
+                    .foregroundStyle(Color.egInk)
+                    .symbol(.square)
+                    .symbolSize(38)
+            }
+        }
+        .chartYScale(domain: (lo - pad)...(hi + pad))
+        .chartXAxis {
+            AxisMarks(values: Array(1...runCount)) { value in
+                AxisValueLabel {
+                    if let n = value.as(Int.self) {
+                        Text("R\(n)")
+                            .egFont(8.5, weight: .heavy)
+                            .foregroundStyle(Color.egGray)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                AxisGridLine().foregroundStyle(Color.egHairline)
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(String(format: "%.1f", v))
+                            .egFont(8.5, weight: .bold)
+                            .foregroundStyle(Color.egGray)
+                    }
+                }
+            }
+        }
+        .frame(height: 140)
     }
 }

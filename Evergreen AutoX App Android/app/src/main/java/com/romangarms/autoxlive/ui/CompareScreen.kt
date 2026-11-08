@@ -175,20 +175,30 @@ private fun niceTicks(lo: Double, hi: Double, desired: Int): List<Double> {
     return ticks
 }
 
+/** The driver page's "times over the day" chart: the compare chart with one driver. */
 @Composable
-private fun RunChart(a: Driver, b: Driver) {
+fun DriverTimesChart(driver: Driver, modifier: Modifier = Modifier) {
+    if (driver.timedRuns.isEmpty()) return
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        EGColumnLabel("TIMES OVER THE DAY")
+        RunChart(driver, null)
+    }
+}
+
+@Composable
+private fun RunChart(a: Driver, b: Driver?) {
     val colors = EG.colors
     val measurer = rememberTextMeasurer()
     val labelStyle = egStyle(8.5f, FontWeight.Black).copy(color = colors.gray)
     val axisStyle = egStyle(8.5f, FontWeight.Bold).copy(color = colors.gray)
 
-    val all = (a.timedRuns + b.timedRuns).map { it.seconds }
+    val all = (a.timedRuns + b?.timedRuns.orEmpty()).map { it.seconds }
     val lo = all.minOrNull() ?: 0.0
     val hi = all.maxOrNull() ?: 1.0
     val pad = max((hi - lo) * 0.18, 0.25)
     val yMin = lo - pad
     val yMax = hi + pad
-    val runCount = max(max(a.runs.size, b.runs.size), 1)
+    val runCount = max(max(a.runs.size, b?.runs?.size ?: 0), 1)
     val ticks = niceTicks(yMin, yMax, 3)
 
     Canvas(Modifier.fillMaxWidth().height(egDp(140f))) {
@@ -220,7 +230,7 @@ private fun RunChart(a: Driver, b: Driver) {
         }
 
         series(a, colors.red, null, ::x, ::y)
-        series(b, colors.ink, PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())), ::x, ::y)
+        if (b != null) series(b, colors.ink, PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx())), ::x, ::y)
     }
 }
 
