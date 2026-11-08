@@ -26,8 +26,10 @@ exports an .ipa, uploads it to App Store Connect, then commits, tags
                  interactively when omitted.
   --skip-bump    Upload the version already in the project.
   --no-upload    Archive and export the .ipa only; no upload, no release.
+  --notes=FILE   Use FILE as the release notes instead of opening the editor.
   -y             Don't ask before continuing with uncommitted changes or
-                 before the git/GitHub step.
+                 before the git/GitHub step, and publish the drafted notes
+                 (the commit subjects) without opening the editor.
   release        Only do the git/GitHub step for the version in the project,
                  using the archive already in $BUILD_DIR/ (re-exports the .ipa
                  if needed). For retrying after a failed release step.
@@ -176,9 +178,9 @@ notes_help() {
 # Release notes for $1. The website's Updates page shows these, so write
 # them for people using the app: one '- ' line per change they would
 # notice, in plain words. Leave out server internals, the dev console,
-# screenshots and App Store copy. Lines starting with # are dropped; an
-# empty file keeps the commit subjects. The commits since the last build
-# are below for reference.
+# screenshots and App Store copy. Lines starting with # are dropped; save
+# an empty file to stop without publishing. The commits since the last
+# build are below for reference.
 #
 HELP
 }
@@ -203,19 +205,19 @@ strip_comments() {
     awk '!/^#/ { lines[++n] = $0 } END { while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print lines[i] }'
 }
 
-# Opens the notes in $EDITOR unless -y, then strips the comments. Falls back
-# to the drafted subjects if the result is empty.
+# Opens the notes in $VISUAL/$EDITOR unless -y, then strips the comments.
+# Fails if nothing is left, so an emptied file stops before publishing.
 edit_notes() {
-    local file=$1 draft
-    draft=$(cat "$file")
+    local file=$1
     if ! $assume_yes; then
-        "${EDITOR:-vi}" "$file" </dev/tty >/dev/tty
+        ${VISUAL:-${EDITOR:-vi}} "$file" </dev/tty >/dev/tty
     fi
     strip_comments < "$file" > "$file.tmp"
-    if ! grep -q '[^[:space:]]' "$file.tmp"; then
-        printf '%s\n' "$draft" | strip_comments > "$file.tmp"
-    fi
     mv "$file.tmp" "$file"
+    if ! grep -q '[^[:space:]]' "$file"; then
+        echo "Release notes are empty; stopping. ./deploy.sh release picks up from here." >&2
+        return 1
+    fi
     echo "Release notes:"
     cat "$file"
 }
@@ -227,7 +229,8 @@ do_notes() {
     command -v gh >/dev/null || { echo "gh CLI not found; install with: brew install gh && gh auth login" >&2; exit 1; }
     gh release view "$tag" >/dev/null || { echo "No GitHub release $tag." >&2; exit 1; }
     { gh release view "$tag" --json body -q .body; echo; draft_notes "$tag" | sed -n '/^# Release notes/,$p'; } > "$file"
-    edit_notes "$file"
+    assume_yes=false
+    edit_notes "$file" || exit 1
     gh release edit "$tag" --notes-file "$file"
     echo "Release: $(gh release view "$tag" --json url -q .url)"
 }
@@ -257,11 +260,16 @@ do_release() {
         echo "Release $tag already existed; replaced its .ipa."
     else
         notes_file="$BUILD_DIR/notes-$version-$build.md"
-        draft_notes "$tag" > "$notes_file"
-        edit_notes "$notes_file"
+        notes="$BUILD_DIR/notes-$version-$build.md"
+        if [ -n "$notes_file" ]; then
+            strip_comments < "$notes_file" > "$notes"
+        else
+            draft_notes "$tag" > "$notes"
+            edit_notes "$notes" || return 1
+        fi
         gh release create "$tag" "$ipa" \
             --title "iOS $version ($build)" \
-            --notes-file "$notes_file"
+            --notes-file "$notes"
     fi
     echo "Release: $(gh release view "$tag" --json url -q .url)"
 }
@@ -272,6 +280,7 @@ upload=true
 assume_yes=false
 mode=deploy
 notes_tag=""
+notes_file=""
 for arg in "$@"; do
     case "$arg" in
         --skip-bump) skip_bump=true ;;
@@ -279,6 +288,10 @@ for arg in "$@"; do
         -y) assume_yes=true ;;
         release) mode=release ;;
         notes) mode=notes ;;
+        --notes=*)
+            notes_file=${arg#--notes=}
+            [ -f "$notes_file" ] || { echo "No file at $notes_file" >&2; exit 1; }
+            ;;
         ios-v*) notes_tag=$arg ;;
         set-key) set_key; exit 0 ;;
         help|-h|--help) usage; exit 0 ;;
