@@ -36,21 +36,17 @@ This is an early beta from an independent developer. It is not affiliated with a
 **What to Test** (per build; edit for each upload)
 
 ```text
-Thanks for testing AutoX Live 1.5!
+Thanks for testing AutoX Live 2.1!
 
 New in this build:
-- Notifications: on the Setup tab, turn on MY TIMES and/or FRIENDS' TIMES and allow notifications. During an event, check you get a notification when a new time posts for the car you marked as This Is Me or for a car you starred, and that nothing arrives for other cars. They also follow those drivers into the next event by name, so check one arrives there before you open that event in the app. Turn both off and check they stop.
-- Apple Watch: if you have a watch paired, the AutoX Live watch app installs alongside the phone app. Open an event on your phone, mark your car and star a few friends, then check the watch shows your last run on the first page and your friends on the second, and that new runs appear on the watch without opening the phone app.
-
-From 1.5 (2), still worth a look:
-- Live results refresh themselves every 10 seconds while you have an event open on race day. Check new runs and position changes appear on their own, and that a driver or compare screen you have open follows that driver when their position changes.
-- No log? On the Post a Time sheet tap NO LOG? USE A PHOTO, type the time and pick one photo as proof. It shows as WAITING FOR REVIEW, only to you, until we approve it.
+- Search: on the Live tab, type in the new search field above the results. Try a car number ("#12" matches only numbers starting with 12), a driver's name, a nickname, a car or a class, and a mix like "miata 12". Check it works with the by-class sort and clears when you switch sessions.
+- Times chart: open any driver from the results. Their page now shows a chart of their times over the day above the runs table. Check the points are spread evenly and match the runs listed below.
+- GGLC fixes: at a GGLC event, a car still on course no longer jumps to first place, and runs after the lunch break are numbered right after the morning's (not from 11). In compare, morning and afternoon runs should still line up. The event should also stay in the list while GGLC is updating its page.
+- Posting from a TrackAddict log: post a time to a board (or the acceleration board) from a TrackAddict CSV and check it goes up with the same time and speeds the log shows. A time with no log still goes through NO LOG? USE A PHOTO and waits for review.
 
 Still worth checking:
-- Live tab: open the latest event and switch sessions. Do times and positions match what you saw at the event?
-- Star a few cars, pick This Is Me from one car's ••• menu, then check the Friends tab and the head-to-head compare.
-- Posting needs Sign in with Apple. Sign in from Setup or the first time you post, pick a username if asked, and check your posts are still yours after deleting and reinstalling the app.
-- Boards tab: create a leaderboard or JOIN WITH CODE, post a time from a TrackAddict CSV, then delete it.
+- Live results refresh themselves every 10 seconds on race day. Check new runs and position changes appear on their own.
+- Star a few cars, pick This Is Me from one car's ••• menu, then check the Friends tab, notifications, and the Apple Watch app if you have one.
 - Turn the system text size up (Settings → Display & Brightness → Text Size) and check nothing is cut off.
 
 Anything confusing, slow, or wrong: screenshot it in TestFlight and send feedback, or email romangarms@gmail.com.
