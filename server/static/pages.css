@@ -19,9 +19,6 @@ nav.site a { color: var(--muted); text-decoration: none; }
 nav.site a:hover { color: var(--red); }
 nav.site a[aria-current] { color: var(--ink); }
 nav.site a:last-child { margin-left: auto; }
-.notice {
-  margin: 0 0 28px; padding: 12px 14px; border: 2px solid var(--red); border-left-width: 6px; font-size: 14px;
-}
 .tag {
   display: inline-block; margin: 0 0 12px; padding: 2px 6px; background: var(--red); color: #f8f5f4;
   font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
@@ -55,3 +52,4 @@ p:has(.button) { margin: 20px 0 4px; }
 }
 .shots img:first-child { margin-left: auto; }
 .shots img:last-child { margin-right: auto; }
+article.post h3 { margin-top: 0; font-size: 20px; }

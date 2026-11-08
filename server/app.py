@@ -2510,6 +2510,11 @@ def privacy():
     return FileResponse(STATIC_DIR / "privacy.html")
 
 
+@app.get("/updates", include_in_schema=False)
+def updates():
+    return FileResponse(STATIC_DIR / "updates.html")
+
+
 @app.get("/support", include_in_schema=False)
 def support():
     return FileResponse(STATIC_DIR / "support.html")

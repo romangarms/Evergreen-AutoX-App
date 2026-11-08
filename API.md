@@ -123,3 +123,4 @@ Approving, rejecting or deleting a submission deletes its photo.
 - `GET /dev` — the dev console
 - `GET /android` — the current Android APK, downloaded as `AutoX-Live-<version>.apk`; 404 when there is none
 - `GET /support`, `GET /privacy` — the pages the app's Support and Privacy links open
+- `GET /updates` — the site's news page: outage notes and release notes for each app version
