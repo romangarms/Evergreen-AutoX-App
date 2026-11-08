@@ -53,13 +53,11 @@ p:has(.button) { margin: 20px 0 4px; }
 .shots img:first-child { margin-left: auto; }
 .shots img:last-child { margin-right: auto; }
 article.post h3 { margin-top: 0; font-size: 20px; }
-.get { display: grid; gap: 0 24px; margin-top: 8px; }
-@container (min-width: 640px) { .get { grid-template-columns: 1fr 1fr; } }
+.get { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; margin-top: 8px; }
 .platform h3 {
   margin: 20px 0 0; font-size: 12px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--muted);
 }
-.platform p:has(.button) { margin: 8px 0 8px; }
-.platform .meta { margin-bottom: 8px; }
-.steps { margin: 0 0 8px; padding-left: 20px; font-size: 14px; }
-.steps li { margin-bottom: 4px; }
+.platform p:has(.button) { margin: 8px 0; }
+.platform .button { display: block; text-align: center; padding: 12px 10px; }
+.platform .meta { margin: 0; }
