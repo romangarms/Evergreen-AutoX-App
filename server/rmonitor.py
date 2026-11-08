@@ -49,8 +49,23 @@ class Competitor:
         self.best_lap: int | None = None
         self.best_time = ""
         self.last_time = ""
+        self.last_total = ""
         # lap number -> lap time text
         self.lap_times: dict[int, str] = {}
+
+    FIELDS = (
+        "number",
+        "name",
+        "class_id",
+        "position",
+        "laps_done",
+        "total_time",
+        "best_position",
+        "best_lap",
+        "best_time",
+        "last_time",
+        "last_total",
+    )
 
 
 class Session:
@@ -118,23 +133,69 @@ class Session:
             c.position = number(0)
             c.laps_done = number(2) or c.laps_done
             c.total_time = arg(3)
+            self._pair(c)
         elif kind == "$H":
             c = self._competitor(arg(1))
             c.best_position = number(0)
             c.best_lap = number(2)
             c.best_time = arg(3)
+            if c.best_lap and _seconds(c.best_time):
+                c.lap_times.setdefault(c.best_lap, c.best_time)
         elif kind == "$J":
             c = self._competitor(arg(0))
-            c.last_time = arg(1)
-            # $J follows the $G that counted the lap.
-            if arg(1) and c.laps_done:
-                c.lap_times.setdefault(c.laps_done, arg(1))
+            c.last_time, c.last_total = arg(1), arg(2)
+            self._pair(c)
         elif kind == "$RMHL":
             lap = number(1)
             if lap is not None and arg(3):
                 self._competitor(arg(0)).lap_times[lap] = arg(3)
         elif kind == "$RMS":
             self.sort_mode = arg(0).lower()
+
+    @staticmethod
+    def _pair(c: Competitor) -> None:
+        # A lap's $J and the $G that counts it arrive in either order (live
+        # crossings send $J first, the dump on joining sends $G first); they
+        # belong together when their total times match.
+        if (
+            c.laps_done
+            and _seconds(c.last_time)
+            and c.last_total
+            and c.last_total == c.total_time
+        ):
+            c.lap_times.setdefault(c.laps_done, c.last_time)
+
+    def to_state(self) -> dict:
+        return {
+            "session_id": self.session_id,
+            "session_name": self.session_name,
+            "sort_mode": self.sort_mode,
+            "flag": self.flag,
+            "track": self.track,
+            "classes": self.classes,
+            "competitors": [
+                {
+                    "reg": c.reg,
+                    **{name: getattr(c, name) for name in Competitor.FIELDS},
+                    "lap_times": {str(lap): text for lap, text in c.lap_times.items()},
+                }
+                for c in self.competitors.values()
+            ],
+        }
+
+    @classmethod
+    def from_state(cls, state: dict) -> "Session":
+        session = cls()
+        for name in ("session_id", "session_name", "sort_mode", "flag", "track"):
+            setattr(session, name, state.get(name) or "")
+        session.classes = dict(state.get("classes") or {})
+        for saved in state.get("competitors") or []:
+            c = session._competitor(saved["reg"])
+            for name in Competitor.FIELDS:
+                if name in saved:
+                    setattr(c, name, saved[name])
+            c.lap_times = {int(lap): text for lap, text in saved["lap_times"].items()}
+        return session
 
     def _ranked(self) -> list[Competitor]:
         # AutoX sessions run in qualifying mode, ranked by best run.

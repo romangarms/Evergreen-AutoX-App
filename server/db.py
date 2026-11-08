@@ -158,6 +158,34 @@ CREATE TABLE IF NOT EXISTS gglc_events (
     final INTEGER NOT NULL DEFAULT 0,
     saved_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS racemonitor_races (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    track TEXT,
+    starts_at INTEGER,
+    ends_at INTEGER,
+    manual INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS racemonitor_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    race_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    name TEXT NOT NULL,
+    track TEXT,
+    UNIQUE (race_id, date)
+);
+CREATE TABLE IF NOT EXISTS racemonitor_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES racemonitor_events(id) ON DELETE CASCADE,
+    session_key TEXT NOT NULL,
+    name TEXT,
+    started_at TEXT NOT NULL,
+    state TEXT NOT NULL,
+    cars INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    UNIQUE (event_id, session_key)
+);
 CREATE TABLE IF NOT EXISTS known_devices (
     token_hash TEXT PRIMARY KEY,
     first_seen TEXT NOT NULL DEFAULT (datetime('now'))

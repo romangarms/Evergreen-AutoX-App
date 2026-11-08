@@ -4,6 +4,7 @@ uvicorn[standard]
 better-profanity
 pyjwt[crypto]
 httpx[http2]
+websockets
 pdfplumber
 ruff
 pytest

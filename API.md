@@ -18,6 +18,15 @@ Laps in the Speedhive API are keyed only by finish position within a session, so
 
 Every Speedhive and GGLC answer is cached in memory (`server/cache.py`): results, laps and a GGLC event for 10 seconds, the org, event and session lists for 60. The app reloads an open event every 10 seconds, so upstream sees one request per page per window however many phones are watching.
 
+## Race Monitor live timing
+
+Evergreen's live timing goes only to Race Monitor, so the server records matching Race Monitor races (`server/racemonitor.py`) and serves them through the Speedhive endpoints above: event and session IDs from 2,000,000,000 up (`racemonitor.ID_OFFSET`) answer from the recording, with Speedhive-shaped rows. `GET /api/orgs/151294/events` (first page only) lists each recorded event whose date Speedhive has no event for, with `location.name` "Race Monitor live timing" and `liveTiming: "racemonitor"`; sessions come back with `resultStatus` `Live`. Laps exist only from the moment the server joined the feed.
+
+- `GET /api/admin/racemonitor` — admin only: whether it is on, the match pattern, every known race (schedule, `watching`, `following`, `connected`, `last_frame_age`) and every recorded event
+- `POST /api/admin/racemonitor/races` — admin only: `{race_id}` watches a race by hand; its name, track and schedule come from its Race Monitor page (404 if Race Monitor has none)
+- `DELETE /api/admin/racemonitor/races/{race_id}` — admin only: stop watching (the recording stays)
+- `DELETE /api/admin/racemonitor/events/{event_id}` — admin only: delete a recorded event and its sessions
+
 ## GGLC
 
 Scraped from gglotus.org result pages.

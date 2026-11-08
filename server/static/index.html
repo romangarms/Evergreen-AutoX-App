@@ -442,6 +442,19 @@
     <div class="panel"><h2>Drivers</h2><ul id="sh-drivers" class="picklist" data-empty="(pick a session)"></ul></div>
     <div class="panel wide"><h2>Raw JSON</h2><pre id="sh-json">(click a driver)</pre></div>
   </div>
+  <div class="panel admin-only" style="margin-top:1rem">
+    <h2>Race Monitor live timing</h2>
+    <p class="muted" id="rm-summary" style="margin-top:0">Recorded races join the event list above as live events until Speedhive has an event on the same date.</p>
+    <div class="row">
+      <label class="field">race id <input id="rm-race-id" type="number" step="any" class="w-md" placeholder="171162"></label>
+      <button class="btn primary" id="rm-add-btn" style="align-self:end">Watch race</button>
+      <button class="btn" id="rm-load-btn" style="align-self:end">Refresh</button>
+    </div>
+    <div class="cols">
+      <div class="panel"><h2>Races</h2><ul id="rm-races" class="picklist" data-empty="(no races found yet)"></ul></div>
+      <div class="panel"><h2>Recorded events</h2><ul id="rm-events" class="picklist" data-empty="(nothing recorded)"></ul></div>
+    </div>
+  </div>
 </section>
 
 <section id="tab-gglc" class="tab">
@@ -493,6 +506,7 @@ function showTab(name) {
   if (name === "submissions") loadSubmissions();
   if (name === "moderation") { loadReports(); loadBans(); loadUsers(); }
   if (name === "speedhive" && shLoadedOrg !== $("org-input").value) loadShEvents();
+  if (name === "speedhive" && adminUser) loadRaceMonitor();
   if (name === "gglc" && gglcLoadedYear !== $("gglc-year").value) loadGglcEvents();
 }
 function openHashTab() {
@@ -1262,6 +1276,60 @@ async function loadShEvents() {
   fillList($("sh-events"), events, e => esc(`${e.startDate || e.date || ""} ${e.name || e.id}`), loadSessions);
 }
 $("load-btn").onclick = loadShEvents;
+
+// ---------- Race Monitor ----------
+function rmWindow(r) {
+  if (!r.starts_at) return "watched the day it was added";
+  const fmt = t => new Date(t * 1000).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `${fmt(r.starts_at)} – ${fmt(r.ends_at)}`;
+}
+async function loadRaceMonitor() {
+  const status = await api("/api/admin/racemonitor");
+  $("rm-summary").textContent = status.enabled
+    ? `Matching /${status.match}/ on Race Monitor's live page every 10 minutes, plus races added here. Recorded races join the event list above until Speedhive has an event on the same date.`
+    : "Turned off on this server (RACEMONITOR=off).";
+  const races = $("rm-races");
+  races.innerHTML = "";
+  for (const r of status.races) {
+    const state = r.connected ? `connected, last frame ${r.last_frame_age ?? "?"}s ago`
+      : r.following ? "waiting for data" : r.watching ? "starting" : "outside its window";
+    const li = document.createElement("li");
+    li.innerHTML = `${esc(r.name)} <span class="sub">#${r.id}${r.manual ? " · added by hand" : ""}</span><br>
+      <span class="sub">${esc(r.track ?? "")} · ${esc(rmWindow(r))} · ${esc(state)}</span>
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="remove">Stop watching</button></div>`;
+    li.querySelector("[data-act=remove]").onclick = async e => {
+      e.stopPropagation();
+      await api(`/api/admin/racemonitor/races/${r.id}`, { method: "DELETE" });
+      loadRaceMonitor();
+    };
+    races.appendChild(li);
+  }
+  const events = $("rm-events");
+  events.innerHTML = "";
+  for (const ev of status.events) {
+    const li = document.createElement("li");
+    li.innerHTML = `${esc(ev.date)} ${esc(ev.name)} <span class="sub">event ${ev.id}</span><br>
+      <span class="sub">${ev.sessions} session(s), ${ev.cars} cars · updated ${esc(ev.updated_at ?? "never")}</span>
+      <div class="row" style="margin-top:0.3rem"><button class="btn" data-act="delete">Delete recording</button></div>`;
+    li.querySelector("[data-act=delete]").onclick = async e => {
+      e.stopPropagation();
+      await api(`/api/admin/racemonitor/events/${ev.id}`, { method: "DELETE" });
+      loadRaceMonitor();
+      loadShEvents();
+    };
+    events.appendChild(li);
+  }
+}
+$("rm-load-btn").onclick = loadRaceMonitor;
+$("rm-add-btn").onclick = async () => {
+  const id = Number($("rm-race-id").value);
+  if (!id) { setStatus("enter a Race Monitor race id", true); return; }
+  const race = await api("/api/admin/racemonitor/races",
+    { method: "POST", body: JSON.stringify({ race_id: id }), headers: { "Content-Type": "application/json" } });
+  setStatus(`watching ${race.name}`);
+  $("rm-race-id").value = "";
+  loadRaceMonitor();
+};
 $("org-input").onchange = loadShEvents;
 
 async function loadSessions(event) {

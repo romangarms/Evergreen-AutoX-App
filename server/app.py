@@ -23,6 +23,7 @@ import httpx
 import moderation
 import notify
 import push
+import racemonitor
 import ratelimit
 import trackaddict
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
@@ -56,6 +57,8 @@ async def lifespan(_app: FastAPI):
             events=lambda org_id: get_events(org_id, limit=EVENT_LIST_LIMIT),
         )
         notify.start(notify.Watcher(upstream, SPEEDHIVE_ORG_ID), gglc.today)
+    if racemonitor.enabled():
+        racemonitor.start()
     yield
 
 
@@ -462,11 +465,21 @@ def _fetch_laps(session_id: int) -> list:
     return result if isinstance(result, list) else []
 
 
+def _race_monitor(rows: list | None, session_id: int) -> list:
+    if rows is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return rows
+
+
 def _raw_laps(session_id: int) -> list:
+    if racemonitor.is_id(session_id):
+        return _race_monitor(racemonitor.laps(session_id), session_id)
     return cache.cached(("laps", session_id), LIVE_TTL, lambda: _fetch_laps(session_id))
 
 
 def _results(session_id: int) -> list:
+    if racemonitor.is_id(session_id):
+        return _race_monitor(racemonitor.results(session_id), session_id)
     return cache.cached(
         ("results", session_id), LIVE_TTL, lambda: client.get_results(session_id)
     )
@@ -484,15 +497,23 @@ def get_org(org_id: int):
 
 @app.get("/api/orgs/{org_id}/events")
 def get_events(org_id: int, limit: int = 50, offset: int = 0):
-    return cache.cached(
+    events = cache.cached(
         ("events", org_id, limit, offset),
         LIST_TTL,
         lambda: client.get_events(org_id, limit=limit, offset=offset),
     )
+    if org_id != SPEEDHIVE_ORG_ID or offset or not isinstance(events, list):
+        return events
+    return racemonitor.merge_events(events)
 
 
 @app.get("/api/events/{event_id}/sessions")
 def get_sessions(event_id: int):
+    if racemonitor.is_id(event_id):
+        sessions = racemonitor.sessions(event_id)
+        if sessions is None:
+            raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+        return sessions
     return cache.cached(
         ("sessions", event_id), LIST_TTL, lambda: client.get_sessions(event_id)
     )
@@ -547,6 +568,42 @@ def get_driver(session_id: int, position: int):
         if isinstance(row, dict) and row.get("position") == position
     ]
     return {"result": result_row, "laps": laps}
+
+
+class RaceMonitorRaceIn(BaseModel):
+    race_id: int = Field(gt=0, lt=racemonitor.ID_OFFSET)
+
+
+@app.get("/api/admin/racemonitor")
+def racemonitor_status(_admin: AdminDep):
+    return racemonitor.status()
+
+
+@app.post("/api/admin/racemonitor/races", status_code=201)
+def add_racemonitor_race(body: RaceMonitorRaceIn, _admin: AdminDep):
+    try:
+        found = racemonitor.add_race(body.race_id)
+    except httpx.HTTPError as error:
+        raise HTTPException(
+            status_code=502, detail=f"Race Monitor did not answer: {error}"
+        ) from error
+    if found is None:
+        raise HTTPException(status_code=404, detail="Race Monitor has no such race")
+    return found
+
+
+@app.delete("/api/admin/racemonitor/races/{race_id}")
+def remove_racemonitor_race(race_id: int, _admin: AdminDep):
+    if not racemonitor.remove_race(race_id):
+        raise HTTPException(status_code=404, detail="Race not found")
+    return {"deleted": race_id}
+
+
+@app.delete("/api/admin/racemonitor/events/{event_id}")
+def delete_racemonitor_event(event_id: int, _admin: AdminDep):
+    if not racemonitor.is_id(event_id) or not racemonitor.delete_event(event_id):
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {"deleted": event_id}
 
 
 @app.get("/api/gglc/events")

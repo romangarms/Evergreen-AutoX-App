@@ -1,9 +1,7 @@
-"""Dev-only: watch a Race Monitor race live and print its results.
+"""Dev tool: watch one Race Monitor race live and print its results.
 
-Race Monitor's terms only allow its API for apps it has authorized, and this
-reads the feed its public web widget uses, so it is an experiment to run by
-hand until Race Monitor issues an API key. Keep it out of app.py, the
-notification watcher and the apps.
+The server follows matching races on its own (racemonitor.py); this is for
+looking at a feed by hand, recording one, and replaying a recording.
 
 Usage:
   python server/racemonitor_watch.py RACE_ID [--record FILE]
@@ -12,23 +10,21 @@ Usage:
 Live mode does what the widget does: asks WebRaceList every 30 seconds until
 the race is receiving data, then joins its websocket and prints the standings
 every few seconds. --record saves every frame (tab-separated receive time and
-the frame, newlines escaped) so a session can be replayed through rmonitor.py
+the frame, line breaks escaped) so a session can be replayed through rmonitor.py
 without a live event. One connection, like one browser tab."""
 
 import argparse
 import json
 import os
+import re
 import sys
 import time
-from datetime import datetime
 
-import httpx
+from racemonitor import ORIGIN, live_race, now_local, socket_url
 from rmonitor import Session
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
-RACE_LIST = "https://api.race-monitor.com/Info/WebRaceList"
-ORIGIN = "https://api.race-monitor.com"
 LIST_INTERVAL = 30
 PRINT_INTERVAL = 5
 
@@ -36,7 +32,7 @@ PRINT_INTERVAL = 5
 def _print(session: Session) -> None:
     rows = session.results()
     print(
-        f"\n{datetime.now():%H:%M:%S}  {session.session_name or '(no session yet)'}"
+        f"\n{now_local():%H:%M:%S}  {session.session_name or '(no session yet)'}"
         f"  flag={session.flag or '-'}  sort={session.sort_mode or '-'}"
         f"  cars={len(rows)}"
     )
@@ -48,42 +44,18 @@ def _print(session: Session) -> None:
         )
 
 
-def _live_race(race_id: int) -> dict | None:
-    response = httpx.get(
-        RACE_LIST,
-        params={"accountID": "", "seriesID": "", "raceID": race_id},
-        timeout=10,
-    )
-    response.raise_for_status()
-    body = response.json()
-    race = next(
-        (r for r in body.get("CurrentRaces") or [] if r.get("ID") == race_id), None
-    )
-    if race is None:
-        print(f"Race {race_id} is not in Race Monitor's current races.")
-        return None
-    if not race.get("ReceivingData"):
-        return {}
-    return {
-        "host": body["LiveTimingHost"],
-        "instance": race["Instance"],
-        "token": body["LiveTimingToken"],
-    }
-
-
 def watch(race_id: int, record) -> None:
     session = Session()
     while True:
-        live = _live_race(race_id)
+        live = live_race(race_id)
         if live is None:
+            print(f"Race {race_id} is not in Race Monitor's current races.")
             return
         if not live:
-            print(
-                f"{datetime.now():%H:%M:%S}  race {race_id} is not receiving data yet"
-            )
+            print(f"{now_local():%H:%M:%S}  race {race_id} is not receiving data yet")
             time.sleep(LIST_INTERVAL)
             continue
-        url = f"wss://{live['host']}/instance/{live['instance']}/{live['token']}"
+        url = socket_url(live)
         printed = 0.0
         try:
             with connect(url, origin=ORIGIN, open_timeout=10) as socket:
@@ -93,7 +65,11 @@ def watch(race_id: int, record) -> None:
                     if isinstance(frame, bytes):
                         frame = frame.decode("utf-8", "replace")
                     if record:
-                        escaped = frame.replace("\\", "\\\\").replace("\n", "\\n")
+                        escaped = (
+                            frame.replace("\\", "\\\\")
+                            .replace("\r", "\\r")
+                            .replace("\n", "\\n")
+                        )
                         record.write(f"{time.time():.3f}\t{escaped}\n")
                         record.flush()
                     session.feed(frame)
@@ -105,17 +81,26 @@ def watch(race_id: int, record) -> None:
             time.sleep(5)
 
 
+_UNESCAPE = {"n": "\n", "r": "\r", "\\": "\\"}
+
+
+def read_recording(path: str):
+    # Only \n ends a record: recordings made before \r was escaped hold raw
+    # carriage returns inside frames.
+    with open(path, newline="\n") as lines:
+        for line in lines:
+            _, _, frame = line.rstrip("\n").partition("\t")
+            yield re.sub(r"\\(.)", lambda m: _UNESCAPE.get(m[1], m[0]), frame)
+
+
 def replay(path: str) -> None:
     session = Session()
     commands: dict[str, int] = {}
-    with open(path) as lines:
-        for line in lines:
-            _, _, frame = line.rstrip("\n").partition("\t")
-            frame = frame.replace("\\n", "\n").replace("\\\\", "\\")
-            for command in frame.splitlines():
-                kind = command.split(",", 1)[0]
-                commands[kind] = commands.get(kind, 0) + 1
-            session.feed(frame)
+    for frame in read_recording(path):
+        for command in frame.splitlines():
+            kind = command.split(",", 1)[0]
+            commands[kind] = commands.get(kind, 0) + 1
+        session.feed(frame)
     _print(session)
     print("\ncommands seen:", json.dumps(dict(sorted(commands.items()))))
 
