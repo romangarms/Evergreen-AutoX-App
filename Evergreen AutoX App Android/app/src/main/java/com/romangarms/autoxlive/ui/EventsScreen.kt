@@ -287,7 +287,7 @@ private fun subtitle(event: SHEvent): String {
 }
 
 @Composable
-private fun SearchField(value: String, onChange: (String) -> Unit) {
+internal fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String = "Search events") {
     val colors = EG.colors
     Row(
         modifier = Modifier
@@ -303,7 +303,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit) {
     ) {
         Icon(Icons.Filled.Search, contentDescription = null, tint = colors.gray, modifier = Modifier.size(egDp(16f)))
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) EGText("Search events", 12.5f, color = colors.gray, maxLines = 1)
+            if (value.isEmpty()) EGText(placeholder, 12.5f, color = colors.gray, maxLines = 1)
             BasicTextField(
                 value = value,
                 onValueChange = onChange,

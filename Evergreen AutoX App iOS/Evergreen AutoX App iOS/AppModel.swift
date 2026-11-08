@@ -62,6 +62,7 @@ final class AppModel {
 
     var liveScrollOffset: CGFloat = 0
     var eventSearch = ""
+    var liveSearch = ""
     var expandedEventSources: Set<EventSource> = []
     var speedhiveAutoXOnly: Bool {
         didSet { defaults.set(speedhiveAutoXOnly, forKey: "speedhiveAutoXOnly") }
@@ -585,6 +586,7 @@ final class AppModel {
         compareSelection = []
         friendsScreen = nil
         liveScrollOffset = 0
+        liveSearch = ""
     }
 
     func goBack() {

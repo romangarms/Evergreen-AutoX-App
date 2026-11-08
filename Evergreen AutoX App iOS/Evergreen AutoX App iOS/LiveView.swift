@@ -20,10 +20,16 @@ struct LiveView: View {
                 if isPickingMe || model.showsMePrompt {
                     mePrompt
                 }
+                searchField
                 ResultsColumnHeader()
                 ScrollView {
                     VStack(spacing: 0) {
-                        if model.liveSortByClass {
+                        if visibleDrivers.isEmpty {
+                            Text("No drivers match \"\(query)\".")
+                                .egFont(12)
+                                .foregroundStyle(Color.egGrayDark)
+                                .padding(24)
+                        } else if model.liveSortByClass {
                             ForEach(classGroups, id: \.name) { group in
                                 classHeader(group.name, count: group.drivers.count)
                                 ForEach(group.drivers) { driver in
@@ -31,12 +37,13 @@ struct LiveView: View {
                                 }
                             }
                         } else {
-                            ForEach(model.drivers) { driver in
+                            ForEach(visibleDrivers) { driver in
                                 ResultRowView(driver: driver, onTap: isPickingMe ? { pickMe(driver) } : nil)
                             }
                         }
                     }
                 }
+                .scrollDismissesKeyboard(.immediately)
                 .scrollPosition($scrollPosition)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
                     if offset >= 0 {
@@ -48,8 +55,66 @@ struct LiveView: View {
         }
     }
 
+    private var query: String {
+        model.liveSearch.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var visibleDrivers: [Driver] {
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return model.drivers }
+        return model.drivers.filter { driver in
+            words.allSatisfy { matches(driver, word: $0) }
+        }
+    }
+
+    // Every word has to hit something, so "miata 12" or "tom ss" narrows down.
+    // Car numbers match from the start ("1" finds #1 and #12, not #21); the
+    // text fields match anywhere.
+    private func matches(_ driver: Driver, word: String) -> Bool {
+        let number = word.hasPrefix("#") ? String(word.dropFirst()) : word
+        if number.isEmpty { return true }
+        if driver.startNumber.lowercased().hasPrefix(number.lowercased()) { return true }
+        if word.hasPrefix("#") { return false }
+        return [driver.name, model.nicknames[driver.startNumber], driver.vehicle, driver.carClass]
+            .compactMap { $0 }
+            .contains { $0.localizedCaseInsensitiveContains(word) }
+    }
+
+    private var searchField: some View {
+        @Bindable var model = model
+        return HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .egFont(12, weight: .semibold)
+                .foregroundStyle(Color.egGray)
+            TextField("Search car #, driver, car, class", text: $model.liveSearch)
+                .egFont(12.5)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+            if !model.liveSearch.isEmpty {
+                Button {
+                    model.liveSearch = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .egFont(17)
+                        .foregroundStyle(Color.egGray)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle().inset(by: -8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .frame(minHeight: 36)
+        .background(Color.egCard)
+        .overlay(Rectangle().strokeBorder(Color.egDivider, lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+
     private var classGroups: [(name: String, drivers: [Driver])] {
-        Dictionary(grouping: model.drivers) { $0.carClass ?? "No class" }
+        Dictionary(grouping: visibleDrivers) { $0.carClass ?? "No class" }
             .map { name, drivers in
                 (name, drivers.sorted { ($0.positionInClass ?? .max, $0.position) < ($1.positionInClass ?? .max, $1.position) })
             }

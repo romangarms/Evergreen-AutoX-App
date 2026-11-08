@@ -64,6 +64,21 @@ private fun naturalCompare(a: String, b: String): Int {
     return pa.size - pb.size
 }
 
+// Every word has to hit something, so "miata 12" or "tom ss" narrows down.
+// Car numbers match from the start ("1" finds #1 and #12, not #21); the text
+// fields match anywhere. Mirrors LiveView.matches on iOS.
+internal fun matchesSearch(driver: Driver, nickname: String?, query: String): Boolean =
+    query.split(Regex("\\s+")).filter { it.isNotEmpty() }.all { word ->
+        val number = word.removePrefix("#")
+        when {
+            number.isEmpty() -> true
+            driver.startNumber.startsWith(number, ignoreCase = true) -> true
+            word.startsWith("#") -> false
+            else -> listOfNotNull(driver.name, nickname, driver.vehicle, driver.carClass)
+                .any { it.contains(word, ignoreCase = true) }
+        }
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveScreen(vm: AppViewModel, state: AppState, openDriver: (String) -> Unit) {
@@ -75,6 +90,14 @@ fun LiveScreen(vm: AppViewModel, state: AppState, openDriver: (String) -> Unit) 
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val byClass = state.settings.liveSortByClass
+    // A new session starts with an empty search, as on iOS.
+    var search by rememberSaveable(state.selectedSessionId) { mutableStateOf("") }
+    val query = search.trim()
+    val drivers = if (query.isEmpty()) {
+        state.drivers
+    } else {
+        state.drivers.filter { matchesSearch(it, state.nicknames[it.startNumber], query) }
+    }
 
     Column(Modifier.fillMaxSize()) {
         if (pickingMe || state.showsMePrompt) {
@@ -85,6 +108,7 @@ fun LiveScreen(vm: AppViewModel, state: AppState, openDriver: (String) -> Unit) 
                 onDismiss = { vm.dismissMePrompt() },
             )
         }
+        SearchField(search, onChange = { search = it }, placeholder = "Search car #, driver, car, class")
         ResultsColumnHeader()
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -106,8 +130,17 @@ fun LiveScreen(vm: AppViewModel, state: AppState, openDriver: (String) -> Unit) 
                 }
             }
             LazyColumn(Modifier.fillMaxSize()) {
-                if (byClass) {
-                    val groups = state.drivers
+                if (drivers.isEmpty()) {
+                    item(key = "no-match") {
+                        EGText(
+                            "No drivers match \"$query\".",
+                            12f,
+                            color = EG.colors.grayDark,
+                            modifier = Modifier.padding(24.dp),
+                        )
+                    }
+                } else if (byClass) {
+                    val groups = drivers
                         .groupBy { it.carClass ?: "No class" }
                         .map { (name, drivers) ->
                             name to drivers.sortedWith(
@@ -122,7 +155,7 @@ fun LiveScreen(vm: AppViewModel, state: AppState, openDriver: (String) -> Unit) 
                         }
                     }
                 } else {
-                    items(state.drivers, key = { it.position }) { driver ->
+                    items(drivers, key = { it.position }) { driver ->
                         ResultRow(vm, state, driver, onTap = { onTap(driver) })
                     }
                 }
