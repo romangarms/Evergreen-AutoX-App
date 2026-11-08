@@ -203,7 +203,12 @@ private fun RunChart(a: Driver, b: Driver?) {
 
     Canvas(Modifier.fillMaxWidth().height(egDp(140f))) {
         val yLabels = ticks.map { measurer.measure(String.format(Locale.US, "%.1f", it), axisStyle) }
-        val xLabels = (1..runCount).map { measurer.measure("R$it", labelStyle) }
+        // A lone driver's own run numbers label the slots, so they match the runs
+        // table; a comparison counts slots, like its run-by-run list.
+        val xLabels = (1..runCount).map { slot ->
+            val number = if (b == null) a.runs.getOrNull(slot - 1)?.number ?: slot else slot
+            measurer.measure("R$number", labelStyle)
+        }
         val leftInset = (yLabels.maxOfOrNull { it.size.width } ?: 0) + 6.dp.toPx()
         val bottomInset = (xLabels.maxOfOrNull { it.size.height } ?: 0) + 4.dp.toPx()
         val plotWidth = size.width - leftInset
@@ -241,18 +246,19 @@ private fun DrawScope.series(
     x: (Int) -> Float,
     y: (Double) -> Float,
 ) {
-    val runs = driver.timedRuns
-    if (runs.size > 1) {
+    // Placed by order in the run list, not by run number: run numbers can skip
+    // (laps filtered out as grid laps keep their numbers).
+    val points = driver.runs.mapIndexedNotNull { i, run -> if (run.dnf) null else Offset(x(i + 1), y(run.seconds)) }
+    if (points.size > 1) {
         val path = Path()
-        runs.forEachIndexed { i, run ->
-            val point = Offset(x(run.number), y(run.seconds))
+        points.forEachIndexed { i, point ->
             if (i == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
         }
         drawPath(path, color, style = Stroke(width = 2.dp.toPx(), pathEffect = dash))
     }
     val side = 6.dp.toPx()
-    runs.forEach { run ->
-        drawRect(color, topLeft = Offset(x(run.number) - side / 2, y(run.seconds) - side / 2), size = Size(side, side))
+    points.forEach { point ->
+        drawRect(color, topLeft = Offset(point.x - side / 2, point.y - side / 2), size = Size(side, side))
     }
 }
 

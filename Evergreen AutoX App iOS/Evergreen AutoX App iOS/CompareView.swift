@@ -192,51 +192,77 @@ struct CompareView: View {
 
 /// The "times over the day" line chart: one driver's timed runs in red, and
 /// optionally a second driver's as a dashed ink line (the compare view).
+/// Runs are placed by their order in the driver's list, not by run number,
+/// because run numbers can skip (laps filtered out as grid laps keep their
+/// numbers), and that left points past the last axis label.
 struct RunTimesChart: View {
     let primary: Driver
     var secondary: Driver?
 
+    private struct Point: Identifiable {
+        let id: Int
+        let seconds: Double
+    }
+
+    private static func points(_ driver: Driver?) -> [Point] {
+        guard let driver else { return [] }
+        return driver.runs.enumerated().compactMap { index, run in
+            run.dnf ? nil : Point(id: index + 1, seconds: run.seconds)
+        }
+    }
+
+    /// A lone driver's own run numbers label the slots, so they match the runs
+    /// table; a comparison counts slots, like its run-by-run list.
+    private func label(_ slot: Int) -> String {
+        if secondary == nil, slot <= primary.runs.count {
+            return "R\(primary.runs[slot - 1].number)"
+        }
+        return "R\(slot)"
+    }
+
     var body: some View {
-        let others = secondary?.timedRuns ?? []
-        let all = (primary.timedRuns + others).map(\.seconds)
+        let mine = Self.points(primary)
+        let others = Self.points(secondary)
+        let all = (mine + others).map(\.seconds)
         let lo = all.min() ?? 0
         let hi = all.max() ?? 1
         let pad = max((hi - lo) * 0.18, 0.25)
         let runCount = max(primary.runs.count, secondary?.runs.count ?? 0, 1)
 
         return Chart {
-            ForEach(primary.timedRuns) { run in
+            ForEach(mine) { point in
                 LineMark(
-                    x: .value("Run", run.number),
-                    y: .value("Time", run.seconds),
+                    x: .value("Run", Double(point.id)),
+                    y: .value("Time", point.seconds),
                     series: .value("Driver", "A")
                 )
                 .foregroundStyle(Color.egRed)
-                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
+                PointMark(x: .value("Run", Double(point.id)), y: .value("Time", point.seconds))
                     .foregroundStyle(Color.egRed)
                     .symbol(.square)
                     .symbolSize(38)
             }
-            ForEach(others) { run in
+            ForEach(others) { point in
                 LineMark(
-                    x: .value("Run", run.number),
-                    y: .value("Time", run.seconds),
+                    x: .value("Run", Double(point.id)),
+                    y: .value("Time", point.seconds),
                     series: .value("Driver", "B")
                 )
                 .foregroundStyle(Color.egInk)
                 .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                PointMark(x: .value("Run", run.number), y: .value("Time", run.seconds))
+                PointMark(x: .value("Run", Double(point.id)), y: .value("Time", point.seconds))
                     .foregroundStyle(Color.egInk)
                     .symbol(.square)
                     .symbolSize(38)
             }
         }
         .chartYScale(domain: (lo - pad)...(hi + pad))
+        .chartXScale(domain: 0.5...(Double(runCount) + 0.5))
         .chartXAxis {
-            AxisMarks(values: Array(1...runCount)) { value in
+            AxisMarks(values: (1...runCount).map(Double.init)) { value in
                 AxisValueLabel {
-                    if let n = value.as(Int.self) {
-                        Text("R\(n)")
+                    if let n = value.as(Double.self) {
+                        Text(label(Int(n)))
                             .egFont(8.5, weight: .heavy)
                             .foregroundStyle(Color.egGray)
                     }
