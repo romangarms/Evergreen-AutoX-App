@@ -9,7 +9,7 @@ import java.util.Locale
 data class SHOrg(val id: Int? = null, val name: String? = null)
 
 enum class EventSource(val label: String) {
-    SPEEDHIVE("Speedhive"),
+    SPEEDHIVE("Speedhive / Race Monitor"),
     GGLC("GGLC"),
     LEADERBOARD("Leaderboards"),
 }

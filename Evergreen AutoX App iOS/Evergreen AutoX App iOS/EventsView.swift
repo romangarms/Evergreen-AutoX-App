@@ -102,13 +102,24 @@ struct EventsView: View {
     private func sectionView(_ section: SourceSection) -> some View {
         let expanded = model.expandedEventSources.contains(section.source)
         let expandable = !isSearching && section.events.count > Self.collapsedCount
+        // Speedhive's name is too long to share a row with its toggle and
+        // the show-all button.
+        let titleAbove = section.source == .speedhive
+        let title = Text(section.source.label.uppercased())
+            .egFont(12, weight: .heavy)
+            .kerning(1.1)
+            .foregroundStyle(Color.egInk)
         return VStack(spacing: 0) {
+            if titleAbove {
+                title
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+            }
             HStack(alignment: .center, spacing: 8) {
-                Text(section.source.label.uppercased())
-                    .egFont(12, weight: .heavy)
-                    .kerning(1.1)
-                    .foregroundStyle(Color.egInk)
-                    .fixedSize()
+                if !titleAbove {
+                    title.fixedSize()
+                }
                 if section.source == .speedhive, !isSearching, model.hasSpeedhiveAutoXEvents {
                     autoXToggle
                 } else if let detail = sectionDetail(section.source) {
@@ -139,7 +150,7 @@ struct EventsView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 14)
+            .padding(.top, titleAbove ? 6 : 14)
             .padding(.bottom, 6)
 
             ForEach(rows(section)) { row in

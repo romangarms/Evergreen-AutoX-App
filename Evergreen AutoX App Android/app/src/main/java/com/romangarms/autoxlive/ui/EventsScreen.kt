@@ -170,7 +170,7 @@ private fun LazyListScope.eventSection(
     onToggleExpanded: () -> Unit,
 ) {
     item(key = "header-${source.name}") {
-        SectionHeader(vm, state, source, events.size, searching, expanded, onToggleExpanded)
+        Column { SectionHeader(vm, state, source, events.size, searching, expanded, onToggleExpanded) }
     }
     items(rows(events, expanded, searching), key = { "${source.name}-${it.key}" }) { row ->
         when (row) {
@@ -202,15 +202,24 @@ private fun SectionHeader(
 ) {
     val colors = EG.colors
     val expandable = !searching && count > COLLAPSED_COUNT
+    // Speedhive's name is too long to share a row with its toggle and the
+    // show-all button.
+    val titleAbove = source == EventSource.SPEEDHIVE
+    val title = @Composable {
+        EGText(source.label.uppercase(), 12f, weight = FontWeight.Black, tracking = 1.1f, maxLines = 1)
+    }
+    if (titleAbove) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)) { title() }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(top = 14.dp, bottom = 6.dp),
+            .padding(top = if (titleAbove) 6.dp else 14.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        EGText(source.label.uppercase(), 12f, weight = FontWeight.Black, tracking = 1.1f, maxLines = 1)
+        if (!titleAbove) title()
         Box(Modifier.weight(1f)) {
             if (source == EventSource.SPEEDHIVE && !searching && state.hasSpeedhiveAutoXEvents) {
                 EGChipButton(onClick = { vm.setSpeedhiveAutoXOnly(!state.settings.speedhiveAutoXOnly) }) { style, tint ->

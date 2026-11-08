@@ -10,7 +10,7 @@ enum EventSource: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .speedhive: "Speedhive"
+        case .speedhive: "Speedhive / Race Monitor"
         case .gglc: "GGLC"
         case .leaderboard: "Leaderboards"
         }
