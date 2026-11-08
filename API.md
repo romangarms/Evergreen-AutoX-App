@@ -117,8 +117,9 @@ Approving, rejecting or deleting a submission deletes its photo.
 ## Stats
 
 - `GET /api/stats` — public aggregate counts for the project page on romangarms.com. Counts only, never a row:
-  - `users` — the number the website shows: the TestFlight tester count from App Store Connect (internal plus public-link testers, cached an hour) when an `ASC_` key is set (`./start.sh asc-key`), otherwise `devices`. The device counts run well above the real number of people, since App Review's phones, dev and simulator builds, Android and testers who left TestFlight all have tokens
+  - `users` — the number the website shows: the TestFlight tester count from App Store Connect (internal plus public-link testers, cached an hour) when an `ASC_` key is set (`./start.sh asc-key`), plus `android`; otherwise `devices`. The device counts run well above the real number of people, since App Review's phones, dev and simulator builds, Android and testers who left TestFlight all have tokens
   - `devices` — the live devices table: roughly the phones seen in the last 90 days, since an idle one that never signed in, posted or turned on notifications is pruned
+  - `android` — Android phones seen in the last 30 days. The server tells platforms apart by User-Agent (`okhttp` is the Android app, `CFNetwork`/`Darwin` is iOS) and keeps the last one it saw on the device row
   - `installs` — the lifetime count, which pruning does not touch. Kept in `known_devices` as a SHA-256 of the token, not the token itself, and seeded from `devices` when it was introduced, so phones pruned before that release are not in it
 
   Both only see a phone once it calls an endpoint that reads its token. The app does that on every launch, but a client that only used the Speedhive reads would never appear.

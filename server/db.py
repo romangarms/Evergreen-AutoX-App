@@ -209,6 +209,7 @@ ADDED_COLUMNS = [
     ("devices", "user_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"),
     ("acceleration_entries", "owner_id", "TEXT"),
     ("users", "label", "TEXT"),
+    ("devices", "platform", "TEXT"),
 ]
 
 

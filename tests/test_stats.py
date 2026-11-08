@@ -22,7 +22,12 @@ def go_idle_and_prune():
 
 
 def test_stats_are_public_and_count_devices(client, device):
-    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 0}
+    assert client.get("/api/stats").json() == {
+        "users": 0,
+        "devices": 0,
+        "installs": 0,
+        "android": 0,
+    }
 
     device("alice")
     device("bob", signed_in=False)
@@ -38,23 +43,43 @@ def test_a_device_added_behind_the_server_is_remembered_by_the_next_prune(
     device("alice", signed_in=False)
     go_idle_and_prune()
 
-    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 1}
+    assert client.get("/api/stats").json() == {
+        "users": 0,
+        "devices": 0,
+        "installs": 1,
+        "android": 0,
+    }
 
 
 def test_stats_carry_nothing_but_counts(client):
     call_as_device(client)
 
-    assert set(client.get("/api/stats").json()) == {"users", "devices", "installs"}
+    assert set(client.get("/api/stats").json()) == {
+        "users",
+        "devices",
+        "installs",
+        "android",
+    }
 
 
 def test_installs_survive_pruning(client):
     call_as_device(client)
-    assert client.get("/api/stats").json() == {"users": 1, "devices": 1, "installs": 1}
+    assert client.get("/api/stats").json() == {
+        "users": 1,
+        "devices": 1,
+        "installs": 1,
+        "android": 0,
+    }
 
     go_idle_and_prune()
 
     # The live table forgets the phone; the lifetime count does not.
-    assert client.get("/api/stats").json() == {"users": 0, "devices": 0, "installs": 1}
+    assert client.get("/api/stats").json() == {
+        "users": 0,
+        "devices": 0,
+        "installs": 1,
+        "android": 0,
+    }
 
 
 def test_a_pruned_device_coming_back_is_not_counted_twice(client):
@@ -63,7 +88,12 @@ def test_a_pruned_device_coming_back_is_not_counted_twice(client):
 
     call_as_device(client)
 
-    assert client.get("/api/stats").json() == {"users": 1, "devices": 1, "installs": 1}
+    assert client.get("/api/stats").json() == {
+        "users": 1,
+        "devices": 1,
+        "installs": 1,
+        "android": 0,
+    }
 
 
 def test_installs_count_distinct_devices(client):
@@ -98,6 +128,7 @@ def test_users_is_the_testflight_count_when_app_store_connect_answers(
         "users": 23,
         "devices": 1,
         "installs": 1,
+        "android": 0,
     }
 
 
@@ -111,3 +142,50 @@ def test_users_falls_back_to_devices_when_app_store_connect_fails(client, monkey
     cache._entries.clear()
 
     assert client.get("/api/stats").json()["users"] == 1
+
+
+ANDROID = {"User-Agent": "okhttp/4.12.0"}
+IOS = {"User-Agent": "AutoX%20Live/42 CFNetwork/3826.400.120 Darwin/25.1.0"}
+
+
+def call_with(client, token, headers):
+    return client.get(
+        "/api/account", headers={"Authorization": f"Bearer {token}", **headers}
+    )
+
+
+def test_android_phones_are_counted_from_their_user_agent(client):
+    call_with(client, "test-device-stats-android1", ANDROID)
+    call_with(client, "test-device-stats-android2", ANDROID)
+    call_with(client, "test-device-stats-iphone01", IOS)
+    call_with(client, "test-device-stats-unknown1", {"User-Agent": "curl/8"})
+
+    assert client.get("/api/stats").json()["android"] == 2
+
+
+def test_a_request_without_a_platform_keeps_the_one_recorded(client):
+    call_with(client, "test-device-stats-android1", ANDROID)
+    call_with(client, "test-device-stats-android1", {"User-Agent": "curl/8"})
+
+    assert client.get("/api/stats").json()["android"] == 1
+
+
+def test_a_quiet_android_phone_drops_out_of_the_count(client):
+    call_with(client, "test-device-stats-android1", ANDROID)
+    with db.session() as conn:
+        conn.execute(
+            "UPDATE devices SET last_seen = datetime('now', ?)",
+            (f"-{app.ANDROID_ACTIVE_DAYS + 1} days",),
+        )
+
+    assert client.get("/api/stats").json()["android"] == 0
+
+
+def test_users_adds_android_phones_to_the_testflight_count(client, monkeypatch):
+    call_with(client, "test-device-stats-android1", ANDROID)
+    call_with(client, "test-device-stats-iphone01", IOS)
+    monkeypatch.setattr(appstore, "configured", lambda: True)
+    monkeypatch.setattr(appstore, "tester_count", lambda: 23)
+    cache._entries.clear()
+
+    assert client.get("/api/stats").json()["users"] == 24

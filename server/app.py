@@ -199,14 +199,28 @@ def _session_valid(request: Request, cookie: str) -> bool:
     return secrets.compare_digest(cookie.encode(), _sign_session(int(expires)).encode())
 
 
-def _record_device(conn, token: str) -> None:
+# Neither app names its platform, but their HTTP stacks do: the Android app's
+# OkHttp sends "okhttp/x.y.z" and iOS's URLSession sends "... CFNetwork/...
+# Darwin/...". Only the stats use it, to count Android phones, which have no
+# TestFlight tester count.
+def device_platform(user_agent: str | None) -> str | None:
+    agent = (user_agent or "").lower()
+    if "okhttp" in agent:
+        return "android"
+    if "cfnetwork" in agent or "darwin" in agent:
+        return "ios"
+    return None
+
+
+def _record_device(conn, token: str, platform: str | None = None) -> None:
     conn.execute(
-        """INSERT INTO devices (token, first_seen, last_seen)
-           VALUES (?, datetime('now'), datetime('now'))
+        """INSERT INTO devices (token, first_seen, last_seen, platform)
+           VALUES (?, datetime('now'), datetime('now'), ?)
            ON CONFLICT (token) DO UPDATE SET
                first_seen = COALESCE(first_seen, excluded.first_seen),
-               last_seen = excluded.last_seen""",
-        (token,),
+               last_seen = excluded.last_seen,
+               platform = COALESCE(excluded.platform, platform)""",
+        (token, platform),
     )
     # Survives _prune_devices, so the lifetime count keeps a phone that has
     # gone quiet and does not count it twice if it comes back.
@@ -271,10 +285,10 @@ def _account_owner_id(apple_sub: str) -> str:
     return f"apple:{apple_sub}"
 
 
-def _device_actor(token: str) -> Actor:
+def _device_actor(token: str, platform: str | None = None) -> Actor:
     global _last_prune
     with db.session() as conn:
-        _record_device(conn, token)
+        _record_device(conn, token, platform)
         if time.monotonic() - _last_prune > PRUNE_INTERVAL_SECONDS:
             _last_prune = time.monotonic()
             _prune_devices(conn)
@@ -305,7 +319,9 @@ def get_actor(
     if bearer is not None:
         if not DEVICE_TOKEN.match(bearer.credentials):
             raise HTTPException(status_code=401, detail="Malformed device token")
-        return _device_actor(bearer.credentials)
+        return _device_actor(
+            bearer.credentials, device_platform(request.headers.get("user-agent"))
+        )
     if session is not None and _session_valid(request, session):
         return Actor(is_admin=True)
     if read_key is not None:
@@ -2513,6 +2529,7 @@ def updates_feed():
 
 # TestFlight's tester list changes a few times a week; once an hour is plenty.
 TESTER_TTL = 60 * 60
+ANDROID_ACTIVE_DAYS = 30
 log = logging.getLogger(__name__)
 
 
@@ -2538,18 +2555,31 @@ def stats():
     simulator builds, Android, and testers who have left TestFlight all have
     tokens. users is the number to show: App Store Connect's TestFlight tester
     count when an ASC key is set (appstore.py), and devices otherwise or while
-    App Store Connect cannot be reached.
+    App Store Connect cannot be reached. Android phones are not TestFlight
+    testers, so with a key users adds the android count: Android phones seen in
+    the last ANDROID_ACTIVE_DAYS (debug builds talk to a dev machine, not here).
     """
     with db.session() as conn:
         devices = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
         installs = conn.execute("SELECT COUNT(*) FROM known_devices").fetchone()[0]
+        android = conn.execute(
+            """SELECT COUNT(*) FROM devices WHERE platform = 'android'
+               AND last_seen >= datetime('now', ?)""",
+            (f"-{ANDROID_ACTIVE_DAYS} days",),
+        ).fetchone()[0]
     users = devices
     if appstore.configured():
         try:
-            users = cache.cached(("asc-testers",), TESTER_TTL, appstore.tester_count)
+            testers = cache.cached(("asc-testers",), TESTER_TTL, appstore.tester_count)
+            users = testers + android
         except Exception:
             log.exception("App Store Connect tester count failed")
-    return {"users": users, "devices": devices, "installs": installs}
+    return {
+        "users": users,
+        "devices": devices,
+        "installs": installs,
+        "android": android,
+    }
 
 
 def _android_release() -> tuple[dict, Path]:

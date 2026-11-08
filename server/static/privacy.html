@@ -37,7 +37,9 @@
     identifier and stores it in your device's Keychain. It is sent with the app's requests to our
     server so the server can tell which leaderboards and times are yours to edit or delete. It is
     not derived from your name, Apple ID, or hardware, and it is never shown to other users. The
-    server keeps a record of each device ID with the first and most recent time it was used.</li>
+    server keeps a record of each device ID with the first and most recent time it was used, and
+    whether it came from the iPhone or the Android app (read from the request's standard
+    User-Agent), which is used only to count how many people use each app.</li>
     <li><strong>Your Apple sign-in.</strong> Posting requires signing in with Apple; browsing does
     not. When you sign in we store the identifier Apple gives this app for your Apple ID, a username
     (filled in from the name you share with Apple, or one you choose), and your email address or, if you hide it, Apple's private relay address.
