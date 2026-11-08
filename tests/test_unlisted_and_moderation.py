@@ -1,7 +1,7 @@
 import app as server
 import db
 import pytest
-from conftest import ADMIN, READ_KEY
+from conftest import ADMIN, READ_KEY, drag_log_for, lap_log
 
 KEY = {server.READ_KEY_HEADER: READ_KEY}
 
@@ -19,7 +19,7 @@ def make_board(client, headers, name="Lot Day", unlisted=False):
 def post_run(client, headers, course_id, driver="Driver"):
     r = client.post(
         f"/api/leaderboard/courses/{course_id}/runs",
-        json={"driver": driver, "time": 61.5},
+        json={"driver": driver, "log": lap_log(61.5), "lap": 1},
         headers=headers,
     )
     assert r.status_code == 200, r.text
@@ -267,7 +267,7 @@ def banned(client, device):
     run = post_run(client, bad, board["id"], "Bad")
     r = client.post(
         "/api/acceleration",
-        json={"vehicle": "Car", "zero_to_60_seconds": 5},
+        json={"vehicle": "Car", "log": drag_log_for(5), "lap": 1},
         headers=bad,
     )
     assert r.status_code == 201
@@ -389,11 +389,16 @@ def test_word_filter_applies_to_devices_and_not_admins(client, device):
     board = make_board(client, owner)
     path = f"/api/leaderboard/courses/{board['id']}/runs"
 
-    ok = {"driver": "Dick Hooker", "time": 55, "notes": "damn drag strip"}
+    ok = {
+        "driver": "Dick Hooker",
+        "log": lap_log(55),
+        "lap": 1,
+        "notes": "damn drag strip",
+    }
     assert client.post(path, json=ok, headers=owner).status_code == 200
     assert (
         client.post(
-            path, json={"driver": "fuck", "time": 55}, headers=owner
+            path, json={"driver": "fuck", "log": lap_log(55), "lap": 1}, headers=owner
         ).status_code
         == 400
     )

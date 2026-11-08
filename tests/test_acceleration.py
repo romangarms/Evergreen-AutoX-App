@@ -1,15 +1,19 @@
 import app
 import db
 import pytest
-from conftest import ADMIN, READ_KEY
+from conftest import ADMIN, READ_KEY, drag_log_for, lap_log
 
 ENTRY = {"vehicle": "Nissan Xterra", "driver": "Sam", "zero_to_60_seconds": 12.22}
 
 
 def _post(client, headers=None, auth=None, **overrides):
-    return client.post(
-        "/api/acceleration", json={**ENTRY, **overrides}, headers=headers, auth=auth
-    )
+    body = {**ENTRY, **overrides}
+    if headers and "Authorization" in headers and "log" not in body:
+        # A device posts only from a TrackAddict log, so its times go in one.
+        sixty = body.pop("zero_to_60_seconds", None)
+        thirty = body.pop("zero_to_30_seconds", None)
+        body |= {"log": drag_log_for(sixty, thirty), "lap": 1}
+    return client.post("/api/acceleration", json=body, headers=headers, auth=auth)
 
 
 def _listed_ids(client, headers=None, auth=None) -> list[int]:
@@ -87,8 +91,52 @@ def test_only_admin_can_hide(client, device):
 
 def test_entry_needs_a_time_unless_admin(client, device):
     no_times = {"zero_to_60_seconds": None}
-    assert _post(client, device("owner"), **no_times).status_code == 400
+    rolling = {"log": lap_log(20), "lap": 1}
+    assert _post(client, device("owner"), **rolling).status_code == 400
     assert _post(client, auth=ADMIN, **no_times).status_code == 201
+
+
+def test_a_device_posts_only_from_a_log(client, device):
+    owner = device("owner")
+    typed = client.post("/api/acceleration", json=ENTRY, headers=owner)
+    assert typed.status_code == 400
+    assert _listed_ids(client) == []
+
+    # The times and source come from the log, whatever the request says.
+    claimed = {**ENTRY, "zero_to_60_seconds": 2.0, "quarter_mile_seconds": 6.0}
+    for log in (drag_log_for(12.22), drag_log_for(12.22).replace("\n# Lap 1", "#")):
+        body = {**claimed, "log": log, "lap": 1, "source": "photo"}
+        response = client.post("/api/acceleration", json=body, headers=owner)
+        if "# Lap 1" not in log:
+            assert response.status_code == 400
+            continue
+        entry = response.json()
+        assert entry["zero_to_60_seconds"] == 12.22
+        assert entry["zero_to_30_seconds"] == 6.11
+        assert entry["quarter_mile_seconds"] is None
+        assert entry["source"] == "trackaddict"
+
+    for lap in (None, 0, 2):
+        body = {**ENTRY, "log": drag_log_for(12.22), "lap": lap}
+        assert (
+            client.post("/api/acceleration", json=body, headers=owner).status_code
+            == 400
+        )
+
+
+def test_a_poster_cannot_change_a_logged_time(client, device):
+    owner = device("owner")
+    entry = _post(client, owner).json()
+    url = f"/api/acceleration/{entry['id']}"
+    for change in (
+        {"zero_to_60_seconds": 3.0},
+        {"quarter_mile_mph": 200},
+        {"source": "x"},
+    ):
+        assert client.patch(url, json=change, headers=owner).status_code == 403
+    assert client.get("/api/acceleration").json()[0]["zero_to_60_seconds"] == 12.22
+    fixed = client.patch(url, json={"zero_to_60_seconds": 12.0}, auth=ADMIN)
+    assert fixed.json()["zero_to_60_seconds"] == 12.0
 
 
 def test_blocked_words_are_rejected_for_devices(client, device):

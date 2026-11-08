@@ -7,7 +7,7 @@ import app as server
 import apple
 import jwt
 import pytest
-from conftest import ADMIN, bearer
+from conftest import ADMIN, bearer, lap_log
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 NONCE = "a-nonce-made-up-by-the-app"
@@ -90,7 +90,7 @@ def make_board(client, headers, name="Lot A", **fields) -> dict:
 def post_run(client, headers, course_id: int, driver="Sam"):
     return client.post(
         f"/api/leaderboard/courses/{course_id}/runs",
-        json={"driver": driver, "time": 61.5},
+        json={"driver": driver, "log": lap_log(61.5), "lap": 1},
         headers=headers,
     )
 

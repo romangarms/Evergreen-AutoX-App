@@ -124,6 +124,7 @@ MAX_COURSES_PER_OWNER = 20
 MAX_ACCELERATION_PER_OWNER = 20
 MAX_PENDING_SUBMISSIONS = 5
 MAX_PROOF_BYTES = 4 * 1024 * 1024
+MAX_LOG_CHARS = 16 * 1024 * 1024
 # Matched against the file's first bytes: what the upload calls itself is not
 # trusted, and the dev console must never be handed something a browser would
 # render as a page.
@@ -647,9 +648,15 @@ class HiddenIn(BaseModel):
     hidden: bool
 
 
+# A device posts a time straight to a board only with the TrackAddict log it
+# came from: the server reads the time out of `log` (lap `lap`) itself, so a
+# typed time can only arrive as a submission, which waits for the admin.
+LogStr = Annotated[str | None, Field(max_length=MAX_LOG_CHARS)]
+
+
 class RunIn(BaseModel):
     driver: NameStr
-    time: float | str
+    time: float | str | None = None
     vehicle: ShortStr = None
     hp: Horsepower = None
     avg_speed_mph: Speed = None
@@ -660,6 +667,8 @@ class RunIn(BaseModel):
     legacy: bool = False
     notes: LongStr = None
     source: Annotated[str, Field(max_length=40)] = "manual"
+    log: LogStr = None
+    lap: int | None = None
 
 
 class RunUpdate(BaseModel):
@@ -691,6 +700,8 @@ class AccelerationIn(BaseModel):
     eighth_mile_mph: Speed = None
     notes: LongStr = None
     source: Annotated[str, Field(max_length=40)] = "manual"
+    log: LogStr = None
+    lap: int | None = None
 
 
 class AccelerationUpdate(AccelerationIn):
@@ -1153,7 +1164,7 @@ def _run_fields(run: RunIn, actor: Actor) -> dict:
         "driver": _clean(run.driver),
         "vehicle": _clean(run.vehicle),
         "hp": run.hp,
-        "time_seconds": _parse_time(run.time),
+        "time_seconds": _parse_time(run.time) if run.time is not None else None,
         "avg_speed_mph": run.avg_speed_mph,
         "top_speed_mph": run.top_speed_mph,
         "run_date": _clean(run.run_date),
@@ -1165,6 +1176,8 @@ def _run_fields(run: RunIn, actor: Actor) -> dict:
     }
     if not fields["driver"]:
         raise HTTPException(status_code=400, detail="Driver cannot be blank")
+    if fields["time_seconds"] is None and run.log is None:
+        raise HTTPException(status_code=400, detail="A run needs a time")
     _require_account(actor)
     _reject_blocked_words(
         actor,
@@ -1182,11 +1195,87 @@ def _insert_row(conn, table: str, fields: dict) -> int:
     return cur.lastrowid
 
 
+# The lap of a TrackAddict log a device is posting, read by the server. A
+# lap counts only if the log has its time and the GPS samples recorded
+# during it, so a bare "# Lap" line typed into a file is not enough.
+def _logged_lap(log: str | None, lap: int | None, actor: Actor) -> dict | None:
+    if log is None:
+        if actor.is_admin:
+            return None
+        raise HTTPException(
+            status_code=400,
+            detail="Post a TrackAddict log, or submit a photo of the time for review",
+        )
+    if lap is None:
+        raise HTTPException(status_code=400, detail="Say which lap of the log to post")
+    entry = next(
+        (entry for entry in trackaddict.parse_log(log)["laps"] if entry["lap"] == lap),
+        None,
+    )
+    if lap < 1 or entry is None or not entry["time_seconds"]:
+        raise HTTPException(status_code=400, detail="That lap has no time in the log")
+    if not entry["distance_miles"]:
+        raise HTTPException(
+            status_code=400, detail="That lap has no GPS samples in the log"
+        )
+    return entry
+
+
+# What a device's post takes from its log (or the admin's review), so only
+# the admin may edit it afterwards.
+RUN_LOGGED_FIELDS = (
+    "time",
+    "top_speed_mph",
+    "avg_speed_mph",
+    "legacy",
+    "source",
+)
+
+
+def _require_admin_for(fields: dict, locked: tuple, actor: Actor) -> None:
+    if not actor.is_admin and any(key in fields for key in locked):
+        raise HTTPException(
+            status_code=403,
+            detail="Only an admin can change a posted time; delete it and post again",
+        )
+
+
+# A device posts a run only from a TrackAddict log, and its time, top speed
+# and source come from the log, never from the request.
+def _run_from_log(fields: dict, run: RunIn, course, actor: Actor) -> dict:
+    entry = _logged_lap(run.log, run.lap, actor)
+    if entry is None:
+        return fields
+    if fields["legacy"] and not actor.is_admin:
+        # A legacy run is scaled to the current course, which makes it rank
+        # faster, so the log has to show the old, longer route was driven.
+        distance, legacy = course["distance_miles"], course["legacy_distance_miles"]
+        if (
+            not distance
+            or not legacy
+            or abs(entry["distance_miles"] - legacy)
+            >= abs(entry["distance_miles"] - distance)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="That log does not cover the legacy route",
+            )
+    top = entry["top_speed_mph"]
+    return {
+        **fields,
+        "time_seconds": entry["time_seconds"],
+        "top_speed_mph": round(top, 1) if top else None,
+        "avg_speed_mph": None,
+        "source": "trackaddict",
+    }
+
+
 @app.post("/api/leaderboard/courses/{course_id}/runs")
 def create_run(course_id: int, run: RunIn, actor: WriterDep):
     fields = _run_fields(run, actor)
     with db.session() as conn:
         course = _get_course(conn, course_id, actor)
+        fields = _run_from_log(fields, run, course, actor)
         run_id = _insert_row(
             conn,
             "runs",
@@ -1198,6 +1287,7 @@ def create_run(course_id: int, run: RunIn, actor: WriterDep):
 @app.patch("/api/leaderboard/runs/{run_id}")
 def update_run(run_id: int, update: RunUpdate, actor: WriterDep):
     fields = update.model_dump(exclude_unset=True)
+    _require_admin_for(fields, RUN_LOGGED_FIELDS, actor)
     if "time" in fields:
         fields["time_seconds"] = _parse_time(fields.pop("time"))
     if "legacy" in fields:
@@ -1956,6 +2046,11 @@ ACCELERATION_TIME_FIELDS = (
     "quarter_mile_seconds",
     "eighth_mile_seconds",
 )
+ACCELERATION_LOGGED_FIELDS = (
+    *ACCELERATION_TIME_FIELDS,
+    "quarter_mile_mph",
+    "eighth_mile_mph",
+)
 
 
 def _get_acceleration(conn, entry_id: int, actor: Actor):
@@ -2004,7 +2099,7 @@ def list_acceleration(actor: ActorDep):
 
 
 def _acceleration_fields(entry: AccelerationIn, actor: Actor) -> dict:
-    fields = entry.model_dump()
+    fields = entry.model_dump(exclude={"log", "lap"})
     for key in ACCELERATION_TEXT_FIELDS:
         fields[key] = _clean(fields[key])
     if not fields["vehicle"]:
@@ -2020,6 +2115,20 @@ def _acceleration_fields(entry: AccelerationIn, actor: Actor) -> dict:
 
 @app.post("/api/acceleration", status_code=201)
 def create_acceleration(entry: AccelerationIn, actor: WriterDep):
+    logged = _logged_lap(entry.log, entry.lap, actor)
+    if logged is not None:
+        # The times come from the log, never from the request.
+        times = logged.get("acceleration")
+        if not times:
+            raise HTTPException(
+                status_code=400, detail="That lap is not a run from a standing start"
+            )
+        entry = entry.model_copy(
+            update={
+                **{key: times.get(key) for key in ACCELERATION_LOGGED_FIELDS},
+                "source": "trackaddict",
+            }
+        )
     fields = {**_acceleration_fields(entry, actor), "owner_id": actor.device_id}
     with db.session() as conn:
         if actor.device_id is not None:
@@ -2040,7 +2149,8 @@ def create_acceleration(entry: AccelerationIn, actor: WriterDep):
 
 @app.patch("/api/acceleration/{entry_id}")
 def update_acceleration(entry_id: int, update: AccelerationUpdate, actor: WriterDep):
-    fields = update.model_dump(exclude_unset=True)
+    fields = update.model_dump(exclude_unset=True, exclude={"log", "lap"})
+    _require_admin_for(fields, (*ACCELERATION_LOGGED_FIELDS, "source"), actor)
     for key in ACCELERATION_TEXT_FIELDS:
         if key in fields:
             fields[key] = _clean(fields[key])
@@ -2179,6 +2289,8 @@ def create_submission(body: SubmissionIn, actor: WriterDep):
         raise HTTPException(
             status_code=400, detail="Enter the vehicle's year, name and HP"
         )
+    if kind == "run" and fields["time_seconds"] is None:
+        raise HTTPException(status_code=400, detail="A run needs a time")
     fields["source"] = "photo"
     data, extension = _decode_proof(body.proof)
     with db.session() as conn:

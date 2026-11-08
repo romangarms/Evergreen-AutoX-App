@@ -46,8 +46,8 @@ Unlisted courses:
 
 Runs:
 
-- `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course the caller can see (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`). A device needs an account
-- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin)
+- `POST /api/leaderboard/courses/{course_id}/runs` — add a run to any course the caller can see (`driver`, `time` as seconds or `m:ss.mmm`, optional `vehicle`, `hp`, `top_speed_mph`, `run_date`, `time_of_day`, `conditions`, `legacy`, `notes`, `source`). A device needs an account and must send the TrackAddict log the run came from (`log`, the raw CSV text, and `lap`, the lap to post); the server reads `time_seconds` and `top_speed_mph` from that lap (which needs its GPS samples) and sets `source` to `trackaddict`, ignoring what the request says. A device's `legacy` run must come from a log whose lap distance is nearer the course's legacy distance than its current one. Only the admin posts a typed time directly; a device's typed time goes through `/api/submissions`
+- `PATCH` / `DELETE /api/leaderboard/runs/{run_id}` — edit or delete a run (its poster, the course owner, or admin). Only the admin may change `time`, `top_speed_mph`, `avg_speed_mph`, `legacy` or `source` (403 otherwise)
 - `PUT /api/leaderboard/runs/{run_id}/hidden` — admin only: hide or unhide
 
 Legacy runs were set on the old, longer course; their adjusted time is scaled by `distance_miles / legacy_distance_miles`. Average speed is computed from the course distance whenever it is known.
@@ -55,8 +55,8 @@ Legacy runs were set on the old, longer course; their adjusted time is scaled by
 ## Acceleration board
 
 - `GET /api/acceleration` — entries ranked by 0-60 then 0-30, missing times last. Everyone but the admin gets a poster's best entry per year and vehicle, with the rest in its `other_runs`
-- `POST /api/acceleration` — add an entry (`vehicle`, optional `year`, `driver`, `hp`, `weight_lb`, `zero_to_30_seconds`, `zero_to_60_seconds`, `eighth_mile_seconds`, `eighth_mile_mph`, `quarter_mile_seconds`, `quarter_mile_mph`, `notes`, `source`). A device needs an account and at least one time, and is limited to 20 entries
-- `PATCH` / `DELETE /api/acceleration/{entry_id}` — the poster or admin; only the admin can set `hidden`
+- `POST /api/acceleration` — add an entry (`vehicle`, optional `year`, `driver`, `hp`, `weight_lb`, `zero_to_30_seconds`, `zero_to_60_seconds`, `eighth_mile_seconds`, `eighth_mile_mph`, `quarter_mile_seconds`, `quarter_mile_mph`, `notes`, `source`). A device needs an account and must send `log` (the raw TrackAddict CSV) and `lap`, a lap from a standing start: the six times and trap speeds come from that lap and `source` becomes `trackaddict`, whatever the request says. A device is limited to 20 entries
+- `PATCH` / `DELETE /api/acceleration/{entry_id}` — the poster or admin; only the admin can set `hidden`, the times and trap speeds, or `source`
 
 ## Submissions for review
 

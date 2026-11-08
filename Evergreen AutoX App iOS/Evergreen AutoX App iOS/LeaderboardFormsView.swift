@@ -258,6 +258,7 @@ struct RunFormView: View {
     @State private var showImporter = false
     @State private var importing = false
     @State private var laps: [TALap] = []
+    @State private var log: String?
     @State private var selectedLap: Int?
     @State private var manual = false
     @State private var manualTime = ""
@@ -423,6 +424,7 @@ struct RunFormView: View {
         do {
             let data = try Data(contentsOf: url)
             let parsed = try await model.parseTrackAddict(csv: data)
+            log = String(decoding: data, as: UTF8.self)
             laps = parsed.filter { $0.timeSeconds != nil }
             let timedRuns = laps.filter { $0.lap != 0 }
             selectedLap = timedRuns.count == 1 ? timedRuns[0].lap : nil
@@ -483,7 +485,9 @@ struct RunFormView: View {
             conditions: conditions.trimmingCharacters(in: .whitespaces).nilIfEmpty,
             legacy: legacy,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            source: manual ? "photo" : "trackaddict"
+            source: manual ? "photo" : "trackaddict",
+            log: manual ? nil : log,
+            lap: manual ? nil : selectedLap
         )
         saving = true
         error = nil

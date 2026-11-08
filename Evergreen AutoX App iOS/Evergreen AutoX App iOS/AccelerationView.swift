@@ -500,6 +500,7 @@ struct AccelFormView: View {
     @State private var importing = false
     @State private var imported = false
     @State private var pulls: [TALap] = []
+    @State private var log: String?
     @State private var selectedLap: Int?
     @State private var manual = false
     @State private var manualTimes = Array(repeating: "", count: 6)
@@ -694,6 +695,7 @@ struct AccelFormView: View {
         do {
             let data = try Data(contentsOf: url)
             pulls = try await model.parseTrackAddict(csv: data).filter { $0.acceleration != nil }
+            log = String(decoding: data, as: UTF8.self)
             imported = true
             selectedLap = pulls.count == 1 ? pulls[0].lap : nil
             if pulls.isEmpty { error = "No run from a standing start was found in that file." }
@@ -752,7 +754,9 @@ struct AccelFormView: View {
             eighthMileSeconds: times.eighthMileSeconds,
             eighthMileMph: times.eighthMileMph,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            source: manual ? "photo" : "trackaddict"
+            source: manual ? "photo" : "trackaddict",
+            log: manual ? nil : log,
+            lap: manual ? nil : selectedLap
         )
         saving = true
         error = nil

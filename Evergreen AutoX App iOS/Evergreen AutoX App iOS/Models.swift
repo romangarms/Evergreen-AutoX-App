@@ -199,9 +199,13 @@ struct LBRunInput: Encodable {
     var legacy: Bool
     var notes: String?
     var source: String
+    // A post straight to a board carries the TrackAddict log and the lap
+    // picked from it; the server reads the time from the log itself.
+    var log: String? = nil
+    var lap: Int? = nil
 
     enum CodingKeys: String, CodingKey {
-        case driver, time, vehicle, hp, conditions, legacy, notes, source
+        case driver, time, vehicle, hp, conditions, legacy, notes, source, log, lap
         case topSpeedMph = "top_speed_mph"
         case runDate = "run_date"
     }
@@ -421,9 +425,11 @@ struct AccelEntryInput: Encodable {
     var eighthMileMph: Double?
     var notes: String?
     var source: String
+    var log: String? = nil
+    var lap: Int? = nil
 
     enum CodingKeys: String, CodingKey {
-        case vehicle, year, driver, hp, notes, source
+        case vehicle, year, driver, hp, notes, source, log, lap
         case weightLb = "weight_lb"
         case zeroTo30 = "zero_to_30_seconds"
         case zeroTo60 = "zero_to_60_seconds"
